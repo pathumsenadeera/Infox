@@ -83,7 +83,7 @@ class ProfileScreen extends StatelessWidget {
                         border: Border.all(color: Colors.white, width: 3),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.grey.withOpacity(0.3),
+                            color: Colors.grey.withValues(alpha: 0.3),
                             blurRadius: 10,
                           ),
                         ],

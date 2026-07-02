@@ -72,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _onLogin() {
+  void _onLogin() async {
     // Check lockout first
     if (_isLockedOut) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -88,7 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final username = _usernameController.text.trim();
-    final password = _passwordController.text;
+    final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -97,47 +97,54 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Simulate credential check (no backend yet).
-    // Default test account: username = "admin", password = "1234"
-    final bool credentialsValid = (username == 'admin' && password == '1234');
+    // 2. Send the data to azure server
+    final result = await AuthService.login(username, password);
 
-    if (credentialsValid) {
+    // 3. handle success
+    if(result['success'] == true){
       _failedAttempts = 0;
       _lockoutTimer?.cancel();
+      
+      if(!mounted) return;
       Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const AssistiveReaderScreen()),
+        context, 
+        MaterialPageRoute(builder: (_) => const AssistiveReaderScreen())
       );
-    } else {
+    }
+
+    // 4. handle failure and lockout
+    else {
       _failedAttempts++;
       final remaining = _maxAttempts - _failedAttempts;
 
-      if (_failedAttempts >= _maxAttempts) {
-        // Trigger lockout
+      if(_failedAttempts >= _maxAttempts){
+        //Trigger Lockout
         setState(() {
           _lockoutUntil = DateTime.now().add(_lockoutDuration);
         });
         _startLockoutCountdown();
+
+        if(!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Too many failed attempts. Account locked for 15 minutes.',
+          SnackBar(content: const Text(
+            'Too many failed attempts . account locked for 15 minutes.',
             ),
             backgroundColor: Colors.red[800],
             duration: const Duration(seconds: 4),
-          ),
+            ),
         );
       } else {
+        if(!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Invalid credentials. $remaining attempt${remaining == 1 ? '' : 's'} remaining.',
-            ),
-            backgroundColor: Colors.orange[700],
+          SnackBar(content: Text(
+            '${result['message']} - $remaining attempt${remaining == 1 ? '' : 's'} remaining.',
+          ),
+          backgroundColor: Colors.orange[700],
           ),
         );
       }
     }
+
   }
 
   @override
@@ -336,39 +343,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: _isLockedOut ? null : () async {
-
-                          // 1. Grab the text from your UI fields
-                          final username = _usernameController.text.trim();
-                          final password = _passwordController.text.trim();
-
-                          // 2. Prevent empty submissions
-                          if (username.isEmpty || password.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Please fill in all fields")),
-                            );
-                            return; // Stop execution here
-                          }
-                          // 3. Send the data to your Azure cloud server
-                          final result = await AuthService.login(username, password);
-
-                          if (result['success'] == true) {
-                            Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AssistiveReaderScreen(),
-                            ),
-                          );
-                          } else {
-                            // Access denied! Show the specific error message from your Python API
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(result['message'])),
-                            );
-                          }
-                        },
+                        onPressed: _isLockedOut ? null : _onLogin,
                         child: Text(
                           _isLockedOut
-                              ? 'LOCKED – ${_formatLockoutTime()}'
+                              ? 'LOCKED - ${_formatLockoutTime()}'
                               : 'Login',
                           style: GoogleFonts.poppins(
                             fontSize: 22,

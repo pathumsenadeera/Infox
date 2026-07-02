@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
+import 'package:sinhala_braille_app/screen/forgot_password_screen.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,16 +17,134 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
+  // ── Lockout state machine ───────────────────────────────────────────────
+  int _failedAttempts = 0;
+  static const int _maxAttempts = 5;
+  static const Duration _lockoutDuration = Duration(minutes: 15);
+  DateTime? _lockoutUntil;
+  Timer? _lockoutTimer;
+  int _lockoutSecondsRemaining = 0;
+
+  bool get _isLockedOut {
+    if (_lockoutUntil == null) return false;
+    return DateTime.now().isBefore(_lockoutUntil!);
+  }
+
+  void _startLockoutCountdown() {
+    _lockoutTimer?.cancel();
+    _lockoutSecondsRemaining = _lockoutUntil!.difference(DateTime.now()).inSeconds;
+    _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      final remaining = _lockoutUntil!.difference(DateTime.now()).inSeconds;
+      if (remaining <= 0) {
+        t.cancel();
+        setState(() {
+          _lockoutUntil = null;
+          _failedAttempts = 0;
+          _lockoutSecondsRemaining = 0;
+        });
+      } else {
+        setState(() => _lockoutSecondsRemaining = remaining);
+      }
+    });
+  }
+
+  String _formatLockoutTime() {
+    final m = (_lockoutSecondsRemaining ~/ 60).toString().padLeft(2, '0');
+    final s = (_lockoutSecondsRemaining % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   void _onVoiceInput(String field) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$field voice input - coming soon')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$field voice input – coming soon')),
+    );
   }
 
   void _onSpeak(String text) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Speaking: $text')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Speaking: $text')),
+    );
+  }
+
+  void _onLogin() {
+    // Check lockout first
+    if (_isLockedOut) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Account locked. Try again in ${_formatLockoutTime()}.',
+          ),
+          backgroundColor: Colors.red[700],
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields.')),
+      );
+      return;
+    }
+
+    // Simulate credential check (no backend yet).
+    // Default test account: username = "admin", password = "1234"
+    final bool credentialsValid = (username == 'admin' && password == '1234');
+
+    if (credentialsValid) {
+      _failedAttempts = 0;
+      _lockoutTimer?.cancel();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AssistiveReaderScreen()),
+      );
+    } else {
+      _failedAttempts++;
+      final remaining = _maxAttempts - _failedAttempts;
+
+      if (_failedAttempts >= _maxAttempts) {
+        // Trigger lockout
+        setState(() {
+          _lockoutUntil = DateTime.now().add(_lockoutDuration);
+        });
+        _startLockoutCountdown();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Too many failed attempts. Account locked for 15 minutes.',
+            ),
+            backgroundColor: Colors.red[800],
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Invalid credentials. $remaining attempt${remaining == 1 ? '' : 's'} remaining.',
+            ),
+            backgroundColor: Colors.orange[700],
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _lockoutTimer?.cancel();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -62,11 +182,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => AuthScreen(),
+                                builder: (_) => const AuthScreen(),
                               ),
                             );
                           },
-                          icon: Icon(Icons.arrow_back_sharp, size: 30),
+                          icon: const Icon(Icons.arrow_back_sharp, size: 30),
                           style: ButtonStyle(
                             backgroundColor: WidgetStatePropertyAll(
                               Colors.grey.shade300,
@@ -105,6 +225,43 @@ class _LoginScreenState extends State<LoginScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
                 child: Column(
                   children: [
+                    // Lockout banner
+                    if (_isLockedOut)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 18),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red[50],
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.red.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.lock_clock,
+                              color: Colors.red[700],
+                              size: 28,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Account locked for 15 minutes.\nTime remaining: ${_formatLockoutTime()}',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.red[800],
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
                     _buildInputField(
                       controller: _usernameController,
                       label: 'UserName',
@@ -119,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 18),
 
-                    // Forgot Password field - speaker icon witharak (mic na)
+                    // Forgot Password row
                     Container(
                       width: double.infinity,
                       height: 60,
@@ -133,10 +290,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           Expanded(
                             child: GestureDetector(
                               onTap: () {
-                                // Forgot Password screen ekata navigate karanna
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Forgot Password tapped'),
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ForgotPasswordScreen(),
                                   ),
                                 );
                               },
@@ -169,22 +327,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       height: 80,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7B4FE0),
+                          backgroundColor: _isLockedOut
+                              ? Colors.grey
+                              : const Color(0xFF7B4FE0),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AssistiveReaderScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: _isLockedOut ? null : _onLogin,
                         child: Text(
-                          'Login',
+                          _isLockedOut
+                              ? 'LOCKED – ${_formatLockoutTime()}'
+                              : 'Login',
                           style: GoogleFonts.poppins(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -211,6 +366,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           fontWeight: FontWeight.w700,
                           color: Colors.black87,
                         ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                    // Demo hint
+                    Text(
+                      'Demo: username = admin  |  password = 1234',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.black38,
                       ),
                     ),
                   ],

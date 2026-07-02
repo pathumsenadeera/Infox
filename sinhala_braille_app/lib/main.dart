@@ -1,25 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
 import 'package:sinhala_braille_app/screen/welcome_screen.dart';
 
-void main() {
-  runApp(const MyApp());
+// Global list to store available cameras
+List<CameraDescription> cameras = [];
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    cameras = await availableCameras();
+  } catch (e) {
+    debugPrint("Error fetching cameras: $e");
+  }
+
+  runApp(
+    AppSettings(
+      notifier: AppSettingsNotifier(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'InfoX',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7B4FE0)),
+        textTheme: GoogleFonts.poppinsTextTheme(),
+        useMaterial3: true,
       ),
-      home:WelcomeScreen(),
+      home: const WelcomeScreen(),
     );
   }
 }
-
-

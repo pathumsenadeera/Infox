@@ -1,4 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Camera permission -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Flashlight/Torch permission -->
+    <uses-permission android:name="android.permission.FLASHLIGHT" />
+    <!-- Internet permission - API calls සඳහා -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Camera hardware feature -->
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <application
         android:label="sinhala_braille_app"
         android:name="${applicationName}"
@@ -31,6 +43,11 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
+
+    <!-- <uses-permission android:name="android.permission.CAMERA" />
+`   <uses-permission android:name="android.permission.FLASHLIGHT"/>
+    <uses-feature android:name="android.hardware.camera" />
+    <uses-feature android:name="android.hardware.camera.flash" /> -->
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.

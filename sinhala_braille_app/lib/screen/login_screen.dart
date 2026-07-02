@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
+import 'package:sinhala_braille_app/services/auth_service.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -175,13 +176,35 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: () {
-                          Navigator.pushReplacement(
+                        onPressed: () async {
+
+                          // 1. Grab the text from your UI fields
+                          final username = _usernameController.text.trim();
+                          final password = _passwordController.text.trim();
+
+                          // 2. Prevent empty submissions
+                          if (username.isEmpty || password.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Please fill in all fields")),
+                            );
+                            return; // Stop execution here
+                          }
+                          // 3. Send the data to your Azure cloud server
+                          final result = await AuthService.login(username, password);
+
+                          if (result['success'] == true) {
+                            Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
                               builder: (context) => AssistiveReaderScreen(),
                             ),
                           );
+                          } else {
+                            // Access denied! Show the specific error message from your Python API
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(result['message'])),
+                            );
+                          }
                         },
                         child: Text(
                           'Login',

@@ -1,33 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  double _speechSpeed = 1.5;
-  String _voiceType = 'Male'; // 'Male' or 'Female'
-  bool _hapticOn = true;
-
-  void _increaseSpeed() {
-    setState(() {
-      if (_speechSpeed < 3.0) _speechSpeed += 0.1;
-    });
-  }
-
-  void _decreaseSpeed() {
-    setState(() {
-      if (_speechSpeed > 0.5) _speechSpeed -= 0.1;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Read global settings – this widget rebuilds automatically when they change
+    final settings = AppSettings.of(context);
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -51,11 +34,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => AssistiveReaderScreen(),
+                          builder: (_) => const AssistiveReaderScreen(),
                         ),
                       );
                     },
-                    icon: Icon(Icons.arrow_back_sharp, size: 30),
+                    icon: const Icon(Icons.arrow_back_sharp, size: 30),
                     style: ButtonStyle(
                       backgroundColor: WidgetStatePropertyAll(
                         Colors.grey.shade300,
@@ -75,192 +58,277 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
 
+            // Settings body
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 30,
-                ),
-                child: Column(
-                  children: [
-                    // SPEECH SPEED label
-                    _sectionLabel('SPEECH SPEED'),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF7B4FE0),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _circleIconButton(
-                            icon: Icons.remove,
-                            onTap: _decreaseSpeed,
-                          ),
-                          Text(
-                            '${_speechSpeed.toStringAsFixed(1)}x',
-                            style: GoogleFonts.poppins(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          _circleIconButton(
-                            icon: Icons.add,
-                            onTap: _increaseSpeed,
-                          ),
-                        ],
-                      ),
+              child: AnimatedBuilder(
+                animation: settings,
+                builder: (context, _) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 30,
                     ),
-
-                    const SizedBox(height: 30),
-
-                    // VOICE TYPE label
-                    _sectionLabel('VOICE TYPE'),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF7B4FE0),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 30,
-                        vertical: 14,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          GestureDetector(
-                            onTap: () => setState(() => _voiceType = 'Male'),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.male,
-                                  size: 32,
-                                  color:
-                                      _voiceType == 'Male'
-                                          ? Colors.white
-                                          : Colors.white54,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── SPEECH SPEED ──────────────────────────────────
+                        _sectionLabel('SPEECH SPEED'),
+                        const SizedBox(height: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7B4FE0),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _circleIconButton(
+                                icon: Icons.remove,
+                                onTap: () => settings.setSpeechRate(
+                                  settings.speechRate - 0.1,
                                 ),
-                                Text(
-                                  'Male',
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w600,
-                                    color:
-                                        _voiceType == 'Male'
+                              ),
+                              Column(
+                                children: [
+                                  Text(
+                                    '${settings.speechRate.toStringAsFixed(1)}×',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Speech Rate',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              _circleIconButton(
+                                icon: Icons.add,
+                                onTap: () => settings.setSpeechRate(
+                                  settings.speechRate + 0.1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        // ── VOICE TYPE ────────────────────────────────────
+                        _sectionLabel('VOICE TYPE'),
+                        const SizedBox(height: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7B4FE0),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 30,
+                            vertical: 14,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Male option
+                              GestureDetector(
+                                onTap: () => settings.setVoiceType('Male'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: settings.voiceType == 'Male'
+                                        ? Colors.white24
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.male,
+                                        size: 36,
+                                        color: settings.voiceType == 'Male'
                                             ? Colors.white
                                             : Colors.white54,
+                                      ),
+                                      Text(
+                                        'Male',
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.w600,
+                                          color: settings.voiceType == 'Male'
+                                              ? Colors.white
+                                              : Colors.white54,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => setState(() => _voiceType = 'Female'),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.female,
-                                  size: 32,
-                                  color:
-                                      _voiceType == 'Female'
-                                          ? Colors.white
-                                          : Colors.white54,
-                                ),
-                                Text(
-                                  'Female',
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w600,
-                                    color:
-                                        _voiceType == 'Female'
+                              ),
+                              // Female option
+                              GestureDetector(
+                                onTap: () => settings.setVoiceType('Female'),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: settings.voiceType == 'Female'
+                                        ? Colors.white24
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.female,
+                                        size: 36,
+                                        color: settings.voiceType == 'Female'
                                             ? Colors.white
                                             : Colors.white54,
+                                      ),
+                                      Text(
+                                        'Female',
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.w600,
+                                          color: settings.voiceType == 'Female'
+                                              ? Colors.white
+                                              : Colors.white54,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                    const SizedBox(height: 30),
+                        const SizedBox(height: 30),
 
-                    // HAPTIC VIBRATION label
-                    _sectionLabel('HAPTIC VIBRATION'),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[850],
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: const EdgeInsets.all(6),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => setState(() => _hapticOn = true),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      _hapticOn
+                        // ── HAPTIC VIBRATION ──────────────────────────────
+                        _sectionLabel('HAPTIC VIBRATION'),
+                        const SizedBox(height: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey[850],
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          padding: const EdgeInsets.all(6),
+                          child: Row(
+                            children: [
+                              // ON
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => settings.setHaptic(true),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: settings.hapticOn
                                           ? Colors.green
                                           : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'ON',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'ON',
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => setState(() => _hapticOn = false),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      !_hapticOn
+                              // OFF
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => settings.setHaptic(false),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: !settings.hapticOn
                                           ? Colors.red
                                           : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'OFF',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'OFF',
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        // ── Current values summary card ────────────────────
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: const Color(0xFF7B4FE0).withValues(alpha: 0.2),
                             ),
                           ),
-                        ],
-                      ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Current Settings',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF7B4FE0),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _summaryRow(
+                                'Speech Rate',
+                                '${settings.speechRate.toStringAsFixed(1)}×',
+                              ),
+                              _summaryRow('Voice Type', settings.voiceType),
+                              _summaryRow(
+                                'Haptic',
+                                settings.hapticOn ? 'Enabled' : 'Disabled',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -269,7 +337,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Grey rounded label background widget
   Widget _sectionLabel(String text) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -295,13 +362,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 50,
-        height: 50,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
           color: Colors.grey[200],
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: const Color(0xFF7B4FE0)),
+        child: Icon(icon, color: const Color(0xFF7B4FE0), size: 26),
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.black54),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+        ],
       ),
     );
   }

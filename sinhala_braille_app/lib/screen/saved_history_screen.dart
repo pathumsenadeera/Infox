@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
+import 'package:sinhala_braille_app/screen/audio_player_screen.dart';
 
 class SavedHistoryScreen extends StatefulWidget {
   const SavedHistoryScreen({super.key});
@@ -10,29 +11,62 @@ class SavedHistoryScreen extends StatefulWidget {
 }
 
 class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
-  // Sample document data - pasුව database eken fetch karanna
+  // Mock local document store – will be replaced by database in Phase 2
   final List<Map<String, String>> _documents = [
-    {'title': 'Math Notes', 'date': '2026-03-05'},
-    {'title': 'Science Ch 2', 'date': '2026-03-04'},
-    {'title': 'Sinhala Notes', 'date': '2026-03-01'},
+    {
+      'title': 'Math Notes – Chapter 3',
+      'date': '2026-03-05',
+      'text': 'ගණිතය – පරිච්ඡේදය 3\n\nසංඛ්‍යා ගෙඩිති සහ ක්‍රම...',
+    },
+    {
+      'title': 'Science Chapter 2',
+      'date': '2026-03-04',
+      'text': 'විද්‍යාව – ජීව රසායනය\n\nකොෂ ව්‍යුහය සහ ක්‍රියාකාරිත්වය...',
+    },
+    {
+      'title': 'Sinhala Notes',
+      'date': '2026-03-01',
+      'text': 'සිංහල – ව්‍යාකරණය\n\nඅකුරු හා ව්‍යාකරණ නීති...',
+    },
+    {
+      'title': 'History – Ancient Lanka',
+      'date': '2026-02-28',
+      'text': 'ඉතිහාසය – පුරාණ ලංකාව\n\nඅනුරාධපුර රාජධානිය...',
+    },
   ];
 
-  void _onSpeak(String text) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Speaking: $text')));
+  // Single tap → read title aloud (shows SnackBar as TTS placeholder)
+  void _onSingleTap(String title) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Reading: $title'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
-  void _onOpenDoc(String title) {
-    ScaffoldMessenger.of(
+  // Double tap → open in AudioPlayerScreen
+  void _onDoubleTap(Map<String, String> doc) {
+    Navigator.push(
       context,
-    ).showSnackBar(SnackBar(content: Text('Opening: $title')));
+      MaterialPageRoute(
+        builder: (_) => AudioPlayerScreen(
+          translatedText: doc['text'],
+          documentTitle: doc['title'],
+        ),
+      ),
+    );
   }
 
+  // Swipe left → delete
   void _onDeleteDoc(int index) {
-    setState(() {
-      _documents.removeAt(index);
-    });
+    setState(() => _documents.removeAt(index));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Document deleted'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -60,18 +94,17 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => AssistiveReaderScreen(),
+                          builder: (_) => const AssistiveReaderScreen(),
                         ),
                       );
                     },
-                    icon: Icon(Icons.arrow_back_sharp, size: 30),
+                    icon: const Icon(Icons.arrow_back_sharp, size: 30),
                     style: ButtonStyle(
                       backgroundColor: WidgetStatePropertyAll(
                         Colors.grey.shade300,
                       ),
                     ),
                   ),
-
                   Expanded(
                     child: Text(
                       'SAVED\nHISTORY',
@@ -90,106 +123,128 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
 
             const SizedBox(height: 20),
 
-            // Document list - swipe to delete enable kara
+            // Document list with swipe-to-delete
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 4,
-                ),
-                itemCount: _documents.length,
-                itemBuilder: (context, index) {
-                  final doc = _documents[index];
-                  return Dismissible(
-                    key: Key(doc['title']! + index.toString()),
-                    direction: DismissDirection.endToStart, // Swipe Left
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 24),
-                      margin: const EdgeInsets.only(bottom: 18),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(20),
+              child: _documents.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No saved documents yet.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
                       ),
-                      child: const Icon(Icons.delete, color: Colors.white),
-                    ),
-                    onDismissed: (_) => _onDeleteDoc(index),
-                    child: GestureDetector(
-                      onTap: () => _onSpeak(doc['title']!), // Single tap
-                      onDoubleTap:
-                          () => _onOpenDoc(doc['title']!), // Double tap
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 18),
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF7B4FE0),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 4,
+                      ),
+                      itemCount: _documents.length,
+                      itemBuilder: (context, index) {
+                        final doc = _documents[index];
+                        return Dismissible(
+                          key: Key('${doc['title']}_$index'),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 24),
+                            margin: const EdgeInsets.only(bottom: 18),
+                            decoration: BoxDecoration(
+                              color: Colors.red[600],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.delete, color: Colors.white, size: 30),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Delete',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          onDismissed: (_) => _onDeleteDoc(index),
+                          child: GestureDetector(
+                            onTap: () => _onSingleTap(doc['title']!),
+                            onDoubleTap: () => _onDoubleTap(doc),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 18),
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF7B4FE0),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
                                 children: [
-                                  Text(
-                                    'Document:',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Document',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                        Text(
+                                          doc['title']!,
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Saved: ${doc['date']!}',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  Text(
-                                    doc['title']!,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    'Date:',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                  Text(
-                                    doc['date']!,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+                                  GestureDetector(
+                                    onTap: () => _onDoubleTap(doc),
+                                    child: Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFD9D9D9),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.play_arrow,
+                                        color: Color(0xFF7B4FE0),
+                                        size: 32,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            GestureDetector(
-                              onTap: () => _onOpenDoc(doc['title']!),
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFD9D9D9),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.play_arrow,
-                                  color: Color(0xFF7B4FE0),
-                                  size: 32,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
 
             // Bottom instruction bar
@@ -208,25 +263,25 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Single tap: Hear Title',
+                          'Single tap  →  Hear Title',
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
                         ),
                         Text(
-                          'Double tap: Open Doc',
+                          'Double tap  →  Open Document',
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
                         ),
                         Text(
-                          'Swipe Left: Delete Doc',
+                          'Swipe Left  →  Delete Document',
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
@@ -235,7 +290,13 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => _onSpeak('Saved history instructions'),
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Reading instructions aloud...'),
+                        ),
+                      );
+                    },
                     child: Container(
                       width: 56,
                       height: 56,

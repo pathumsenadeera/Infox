@@ -261,14 +261,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Container(
           width: 100,
           height: 100,
-          decoration: BoxDecoration(
-            color: const Color(0xFF7B4FE0),
+          decoration: const BoxDecoration(
+            color: Color(0xFF7B4FE0),
             shape: BoxShape.circle,
           ),
           child: const Icon(
             Icons.mark_email_read_outlined,
             size: 52,
-            color: Color(0xFF7B4FE0),
+            color: Colors.white,
           ),
         ),
 
@@ -362,8 +362,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
             ),
             onPressed: () {
-              // Login screen ekata navigate karanna
-              Navigator.pop(context);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
             },
             child: Text(
               'BACK TO LOGIN',

@@ -51,7 +51,7 @@ class WelcomeScreen extends StatelessWidget {
                     );
                   },
                   child: Text(
-                    'GET START',
+                    'GET STARTED',
                     style: GoogleFonts.poppins(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
+import 'package:sinhala_braille_app/services/auth_service.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -142,13 +143,47 @@ class _SignupScreenState extends State<SignupScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => AssistiveReaderScreen(),
-                            ),
-                          );
+                        onPressed: () async {
+                          // 1. Grab the text from UI fields
+                          final username = _usernameController.text.trim();
+                          final email = _emailController.text.trim();
+                          final password = _passwordController.text.trim();
+
+                          // 2. Prevent empty submissions
+                          if(username.isEmpty || email.isEmpty || password.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Please fill in all fields")),
+                            );
+                            return; // stop execution here
+                          }
+
+                          // 3. Send the registration data to azure cloud server
+                          final result = await AuthService.signup(username, email, password);
+
+                          // 4. Check server response
+                          if(result['success'] == true) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Account Created Successfully! Please Log in."),
+                              backgroundColor: Colors.green,
+                              ),
+                              );
+
+                              // Navigate back to the Login Screen so they can sign in
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => LoginScreen(),
+                                ),
+                              );
+                          } else {
+                            // Registeration failed! Show the Python API error Message .
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(result['message']),
+                              backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                          
                         },
                         child: Text(
                           'Sign Up',

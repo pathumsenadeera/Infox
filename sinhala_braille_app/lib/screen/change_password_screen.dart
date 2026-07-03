@@ -23,10 +23,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInp
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
 
-  void _onVoiceInput(TextEditingController controller) => startVoiceDictation(controller);
+  bool _isLoading = false;
+
+  void _onVoiceInput(TextEditingController controller) =>
+      startVoiceDictation(controller);
   void _onSpeak(String label) => speakLabel(label);
 
-  void _onSavePassword() {
+  void _onSavePassword() async {
     // Empty field check
     if (_currentPasswordController.text.isEmpty ||
         _newPasswordController.text.isEmpty ||
@@ -37,15 +40,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInp
       return;
     }
 
-    final userProvider = UserProvider.of(context);
-    if (_currentPasswordController.text != userProvider.password) {
+    // Verify current password matches locally cached password
+    final cachedPassword = UserProvider.of(context).password;
+    if (_currentPasswordController.text != cachedPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Current password is incorrect!')),
       );
       return;
     }
 
-    // Validation: new password == confirm password check karanawa
+    // Confirm new passwords match before hitting the server
     if (_newPasswordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(
         context,
@@ -53,12 +57,31 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInp
       return;
     }
 
-    userProvider.updatePassword(_newPasswordController.text);
+    setState(() => _isLoading = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password Changed Successfully!')),
+    final result = await UserProvider.of(context).changePassword(
+      _currentPasswordController.text,
+      _newPasswordController.text,
     );
-    Navigator.pop(context);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password Changed Successfully!')),
+      );
+      Navigator.pop(context);
+    } else {
+      final message =
+          result['message'] as String? ?? 'Failed to change password.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red[700],
+        ),
+      );
+    }
   }
 
   @override
@@ -213,23 +236,30 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInp
                       height: 70,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7B4FE0),
+                          backgroundColor: _isLoading
+                              ? Colors.grey
+                              : const Color(0xFF7B4FE0),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: _onSavePassword,
-                        child: Text(
-                          'SAVE\nPASSWORD',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                            height: 1.1,
-                          ),
-                        ),
+                        onPressed: _isLoading ? null : _onSavePassword,
+                        child: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              )
+                            : Text(
+                                'SAVE\nPASSWORD',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  height: 1.1,
+                                ),
+                              ),
                       ),
                     ),
                   ],

@@ -6,7 +6,6 @@ import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
 import 'package:sinhala_braille_app/screen/forgot_password_screen.dart';
-import 'package:sinhala_braille_app/services/auth_service.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -20,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _showPassword = false;
+  bool _isLoading = false;
 
   // ── Lockout state machine ───────────────────────────────────────────────
   int _failedAttempts = 0;
@@ -64,7 +64,6 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
   }
   // ────────────────────────────────────────────────────────────────────────
 
-
   void _onLogin() async {
     // Check lockout first
     if (_isLockedOut) {
@@ -84,62 +83,66 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
     final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please fill in all fields.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields.')),
+      );
       return;
     }
 
-    // Check against UserProvider or demo credentials
-    final bool credentialsValid = UserProvider.of(
-      context,
-    ).login(username, password);
+    setState(() => _isLoading = true);
+
+    // Call the API via UserNotifier (which wraps AuthService)
+    final result = await UserProvider.of(context).login(username, password);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
     // 3. handle success
-    if(result['success'] == true){
+    if (result['success'] == true) {
       _failedAttempts = 0;
       _lockoutTimer?.cancel();
-      
-      if(!mounted) return;
+
       Navigator.pushReplacement(
-        context, 
-        MaterialPageRoute(builder: (_) => const AssistiveReaderScreen())
+        context,
+        MaterialPageRoute(builder: (_) => const AssistiveReaderScreen()),
       );
     }
-
     // 4. handle failure and lockout
     else {
       _failedAttempts++;
       final remaining = _maxAttempts - _failedAttempts;
 
-      if(_failedAttempts >= _maxAttempts){
+      if (_failedAttempts >= _maxAttempts) {
         //Trigger Lockout
         setState(() {
           _lockoutUntil = DateTime.now().add(_lockoutDuration);
         });
         _startLockoutCountdown();
 
-        if(!mounted) return;
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: const Text(
-            'Too many failed attempts . account locked for 15 minutes.',
+          SnackBar(
+            content: const Text(
+              'Too many failed attempts. Account locked for 15 minutes.',
             ),
             backgroundColor: Colors.red[800],
             duration: const Duration(seconds: 4),
-            ),
+          ),
         );
       } else {
-        if(!mounted) return;
+        final message =
+            result['message'] as String? ?? 'Invalid username or password.';
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(
-            '${result['message']} - $remaining attempt${remaining == 1 ? '' : 's'} remaining.',
-          ),
-          backgroundColor: Colors.orange[700],
+          SnackBar(
+            content: Text(
+              '$message ($remaining attempt${remaining == 1 ? '' : 's'} remaining)',
+            ),
+            backgroundColor: Colors.orange[700],
           ),
         );
       }
     }
-
   }
 
   @override
@@ -302,8 +305,8 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) =>
-                                        const ForgotPasswordScreen(),
+                                    builder:
+                                        (_) => const ForgotPasswordScreen(),
                                   ),
                                 );
                               },
@@ -336,25 +339,33 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
                       height: 80,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _isLockedOut
-                              ? Colors.grey
-                              : const Color(0xFF7B4FE0),
+                          backgroundColor:
+                              _isLockedOut || _isLoading
+                                  ? Colors.grey
+                                  : const Color(0xFF7B4FE0),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: _isLockedOut ? null : _onLogin,
-                        child: Text(
-                          _isLockedOut
-                              ? 'LOCKED - ${_formatLockoutTime()}'
-                              : 'Login',
-                          style: GoogleFonts.poppins(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        onPressed:
+                            (_isLockedOut || _isLoading) ? null : _onLogin,
+                        child:
+                            _isLoading
+                                ? const CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 3,
+                                )
+                                : Text(
+                                  _isLockedOut
+                                      ? 'LOCKED - ${_formatLockoutTime()}'
+                                      : 'Login',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -375,16 +386,6 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
                           fontWeight: FontWeight.w700,
                           color: Colors.black87,
                         ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-                    // Demo hint
-                    Text(
-                      'Demo: username = admin  |  password = 1234',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.black38,
                       ),
                     ),
                   ],

@@ -19,15 +19,13 @@ Future<void> main() async {
   }
 
   // Initialise TTS + STT service
+  //add loading screen or something because this takes 5-6 seconds to load.
   await TtsService.instance.init();
 
   runApp(
     AppSettings(
       notifier: AppSettingsNotifier(),
-      child: UserProvider(
-        notifier: UserNotifier(),
-        child: const MyApp(),
-      ),
+      child: UserProvider(notifier: UserNotifier(), child: const MyApp()),
     ),
   );
 }

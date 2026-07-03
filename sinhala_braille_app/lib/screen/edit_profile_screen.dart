@@ -11,7 +11,8 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> with TtsInputMixin {
+class _EditProfileScreenState extends State<EditProfileScreen>
+    with TtsInputMixin {
   final TextEditingController _nameController = TextEditingController();
 
   @override
@@ -22,10 +23,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> with TtsInputMixi
     }
   }
 
+  bool _isLoading = false;
+
   void _onVoiceInput() => startVoiceDictation(_nameController);
   void _onSpeak(String label) => speakLabel(label);
 
-  void _onSaveChanges() {
+  void _onSaveChanges() async {
     final newName = _nameController.text.trim();
     if (newName.isEmpty) {
       ScaffoldMessenger.of(
@@ -33,11 +36,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> with TtsInputMixi
       ).showSnackBar(const SnackBar(content: Text('Name cannot be empty!')));
       return;
     }
-    UserProvider.of(context).updateProfile(newName);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Changes Saved!')));
-    Navigator.pop(context);
+
+    setState(() => _isLoading = true);
+
+    final result = await UserProvider.of(context).updateUsername(newName);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name updated successfully!')),
+      );
+      Navigator.pop(context);
+    } else {
+      final message =
+          result['message'] as String? ?? 'Failed to update name.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red[700],
+        ),
+      );
+    }
   }
 
   @override
@@ -268,21 +289,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> with TtsInputMixi
                       height: 64,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7B4FE0),
+                          backgroundColor: _isLoading
+                              ? Colors.grey
+                              : const Color(0xFF7B4FE0),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: _onSaveChanges,
-                        child: Text(
-                          'SAVE CHANGES',
-                          style: GoogleFonts.poppins(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        onPressed: _isLoading ? null : _onSaveChanges,
+                        child: _isLoading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              )
+                            : Text(
+                                'SAVE CHANGES',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
                       ),
                     ),
                   ],

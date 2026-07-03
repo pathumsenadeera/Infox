@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
-import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
-import 'package:sinhala_braille_app/services/auth_service.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -23,6 +21,7 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
 
   bool _showPassword = false;
   bool _showConfirmPassword = false;
+  bool _isLoading = false;
   double _passwordStrengthScore = 0.0;
   String _passwordStrengthLabel = '';
   Color _passwordStrengthColor = Colors.grey;
@@ -68,7 +67,7 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
     });
   }
 
-  void _onSignUp() {
+  void _onSignUp() async {
     final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -95,25 +94,37 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
 
     // Confirm password match check
     if (password != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Passwords do not match!')));
       return;
     }
 
-    // Save user state
-    UserProvider.of(
+    setState(() => _isLoading = true);
+
+    // Call the API via UserNotifier (which wraps AuthService)
+    final result = await UserProvider.of(
       context,
     ).signup(username: username, email: email, password: password);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Account Created Successfully!')),
-    );
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => AssistiveReaderScreen()),
-    );
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Account Created Successfully! Please login.')),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    } else {
+      final message =
+          result['message'] as String? ?? 'Signup failed. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red[700]),
+      );
+    }
   }
 
   @override
@@ -285,21 +296,30 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
                       height: 80,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7B4FE0),
+                          backgroundColor:
+                              _isLoading
+                                  ? Colors.grey
+                                  : const Color(0xFF7B4FE0),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onPressed: _onSignUp,
-                        child: Text(
-                          'Sign Up',
-                          style: GoogleFonts.poppins(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        onPressed: _isLoading ? null : _onSignUp,
+                        child:
+                            _isLoading
+                                ? const CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 3,
+                                )
+                                : Text(
+                                  'Sign Up',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
                       ),
                     ),
                     const SizedBox(height: 18),

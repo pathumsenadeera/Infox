@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
+import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/welcome_screen.dart';
 
 // Global list to store available cameras
@@ -19,7 +20,10 @@ Future<void> main() async {
   runApp(
     AppSettings(
       notifier: AppSettingsNotifier(),
-      child: const MyApp(),
+      child: UserProvider(
+        notifier: UserNotifier(),
+        child: const MyApp(),
+      ),
     ),
   );
 }

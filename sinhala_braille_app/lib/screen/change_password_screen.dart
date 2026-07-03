@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/profile_screen.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
@@ -44,6 +45,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
+    final userProvider = UserProvider.of(context);
+    if (_currentPasswordController.text != userProvider.password) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Current password is incorrect!')),
+      );
+      return;
+    }
+
     // Validation: new password == confirm password check karanawa
     if (_newPasswordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(
@@ -51,6 +60,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       ).showSnackBar(const SnackBar(content: Text('Passwords do not match!')));
       return;
     }
+
+    userProvider.updatePassword(_newPasswordController.text);
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Password Changed Successfully!')),

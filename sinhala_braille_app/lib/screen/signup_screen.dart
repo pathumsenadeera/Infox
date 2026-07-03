@@ -4,6 +4,7 @@ import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
+import 'package:sinhala_braille_app/services/auth_service.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {

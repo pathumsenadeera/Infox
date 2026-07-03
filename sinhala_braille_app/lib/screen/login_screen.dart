@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
+import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
 import 'package:sinhala_braille_app/screen/forgot_password_screen.dart';
@@ -14,9 +16,10 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _showPassword = false;
 
   // ── Lockout state machine ───────────────────────────────────────────────
   int _failedAttempts = 0;
@@ -33,7 +36,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _startLockoutCountdown() {
     _lockoutTimer?.cancel();
-    _lockoutSecondsRemaining = _lockoutUntil!.difference(DateTime.now()).inSeconds;
+    _lockoutSecondsRemaining =
+        _lockoutUntil!.difference(DateTime.now()).inSeconds;
     _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) {
         t.cancel();
@@ -60,17 +64,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
   // ────────────────────────────────────────────────────────────────────────
 
-  void _onVoiceInput(String field) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$field voice input – coming soon')),
-    );
-  }
-
-  void _onSpeak(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Speaking: $text')),
-    );
-  }
 
   void _onLogin() async {
     // Check lockout first
@@ -91,14 +84,16 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please fill in all fields.')));
       return;
     }
 
-    // 2. Send the data to azure server
-    final result = await AuthService.login(username, password);
+    // Check against UserProvider or demo credentials
+    final bool credentialsValid = UserProvider.of(
+      context,
+    ).login(username, password);
 
     // 3. handle success
     if(result['success'] == true){
@@ -281,6 +276,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       label: 'Password',
                       fieldName: 'Password',
                       isPassword: true,
+                      isVisible: _showPassword,
+                      onToggleVisibility: () {
+                        setState(() {
+                          _showPassword = !_showPassword;
+                        });
+                      },
                     ),
                     const SizedBox(height: 18),
 
@@ -317,7 +318,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () => _onSpeak('Forgot Password'),
+                            onTap: () => speakLabel('Forgot Password'),
                             child: const Icon(
                               Icons.volume_up,
                               color: Color(0xFF7B4FE0),
@@ -401,6 +402,8 @@ class _LoginScreenState extends State<LoginScreen> {
     required String label,
     required String fieldName,
     bool isPassword = false,
+    bool isVisible = false,
+    VoidCallback? onToggleVisibility,
   }) {
     return Container(
       height: 78,
@@ -414,7 +417,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Expanded(
             child: TextField(
               controller: controller,
-              obscureText: isPassword,
+              obscureText: isPassword && !isVisible,
               style: GoogleFonts.poppins(fontSize: 17, color: Colors.black87),
               decoration: InputDecoration(
                 hintText: label,
@@ -426,32 +429,20 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          GestureDetector(
-            onTap: () => _onVoiceInput(fieldName),
-            child: Container(
-              width: 52,
-              height: 52,
-              margin: const EdgeInsets.only(left: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFF7B4FE0),
-                shape: BoxShape.circle,
+          if (isPassword && onToggleVisibility != null)
+            GestureDetector(
+              onTap: onToggleVisibility,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Icon(
+                  isVisible ? Icons.visibility : Icons.visibility_off,
+                  color: Colors.grey[700],
+                  size: 24,
+                ),
               ),
-              child: const Icon(Icons.mic, color: Colors.white, size: 24),
             ),
-          ),
-          GestureDetector(
-            onTap: () => _onSpeak(label),
-            child: Container(
-              width: 52,
-              height: 52,
-              margin: const EdgeInsets.only(left: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFF7B4FE0),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.volume_up, color: Colors.white, size: 24),
-            ),
-          ),
+          buildMicButton(controller),
+          buildSpeakerButton(label),
         ],
       ),
     );

@@ -6,6 +6,11 @@
     <uses-permission android:name="android.permission.FLASHLIGHT" />
     <!-- Internet permission - API calls සඳහා -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Microphone permission - Speech-to-Text voice dictation සඳහා -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Bluetooth permissions - some TTS engines need these on newer Android -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Camera hardware feature -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />

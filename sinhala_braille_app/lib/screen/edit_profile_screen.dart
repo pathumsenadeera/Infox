@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
+import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/profile_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -9,24 +11,29 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen> with TtsInputMixin {
   final TextEditingController _nameController = TextEditingController();
-  final String _userEmail = 'john@email.com'; // Cannot be changed
 
-  void _onVoiceInput() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Voice input for Name')));
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_nameController.text.isEmpty) {
+      _nameController.text = UserProvider.of(context).userName;
+    }
   }
 
-  void _onSpeak(String text) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Speaking: $text')));
-  }
+  void _onVoiceInput() => startVoiceDictation(_nameController);
+  void _onSpeak(String label) => speakLabel(label);
 
   void _onSaveChanges() {
-    // Database update logic methanata
+    final newName = _nameController.text.trim();
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Name cannot be empty!')));
+      return;
+    }
+    UserProvider.of(context).updateProfile(newName);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Changes Saved!')));
@@ -34,7 +41,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final userEmail = UserProvider.of(context).userEmail;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -209,7 +224,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   ),
                                 ),
                                 Text(
-                                  _userEmail,
+                                  userEmail,
                                   style: GoogleFonts.poppins(
                                     fontSize: 17,
                                     fontWeight: FontWeight.bold,
@@ -227,7 +242,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () => _onSpeak(_userEmail),
+                            onTap: () => _onSpeak(userEmail),
                             child: Container(
                               width: 48,
                               height: 48,

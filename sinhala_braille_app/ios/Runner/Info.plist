@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>InfoX needs microphone access to allow voice dictation for input fields.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>InfoX uses speech recognition to let you fill input fields using your voice.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>InfoX needs camera access to scan Braille documents.</string>
 </dict>
 </plist>

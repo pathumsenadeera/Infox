@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sinhala_braille_app/providers/tts_service.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 
 class AudioPlayerScreen extends StatefulWidget {
@@ -34,26 +36,112 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   String get _title => widget.documentTitle ?? 'Scan Result';
 
-  // ── Playback controls ────────────────────────────────────────────────────
+  // ── Paragraph / sentence tracking for rewind/forward + bookmark ──────────
+  late List<String> _paragraphs;
+  int _currentIndex = 0;
 
-  void _togglePlay() {
-    setState(() => _isPlaying = !_isPlaying);
-    // TTS engine call will be wired here in Phase 2
+  static String _bookmarkKey(String title) => 'bookmark_$title';
+
+  @override
+  void initState() {
+    super.initState();
+    // Split on blank lines (paragraphs) then fall back to sentences
+    _paragraphs = _splitIntoParagraphs(_displayText);
+    _loadBookmark();
   }
 
-  void _onRewind() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Rewinding...')),
-    );
+  List<String> _splitIntoParagraphs(String text) {
+    // Split by double newlines first
+    final parts =
+        text.split(RegExp(r'\n\s*\n')).where((s) => s.trim().isNotEmpty).toList();
+    if (parts.length > 1) return parts;
+    // Fall back to sentence splitting
+    return text
+        .split(RegExp(r'(?<=[.!?।])\s+'))
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
   }
 
-  void _onForward() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Forwarding...')),
-    );
+  Future<void> _loadBookmark() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt(_bookmarkKey(_title)) ?? 0;
+    if (saved > 0 && saved < _paragraphs.length) {
+      setState(() => _currentIndex = saved);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Resuming from bookmark (section ${saved + 1})'),
+            backgroundColor: const Color(0xFF7B4FE0),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
-  // ── Save document dialog ─────────────────────────────────────────────────
+  Future<void> _saveBookmark() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_bookmarkKey(_title), _currentIndex);
+  }
+
+  // ── Playback controls ─────────────────────────────────────────────────────
+
+  Future<void> _togglePlay() async {
+    if (_isPlaying) {
+      await TtsService.instance.pause();
+      setState(() => _isPlaying = false);
+    } else {
+      setState(() => _isPlaying = true);
+      await _speakFromCurrentIndex();
+    }
+  }
+
+  Future<void> _speakFromCurrentIndex() async {
+    if (_paragraphs.isEmpty) return;
+
+    // Speak each paragraph in sequence starting from _currentIndex
+    for (int i = _currentIndex; i < _paragraphs.length; i++) {
+      if (!mounted || !_isPlaying) break;
+      setState(() => _currentIndex = i);
+      await _saveBookmark();
+      await TtsService.instance.speakSinhala(_paragraphs[i]);
+      // Wait for this chunk to finish before moving to the next
+      await Future.doWhile(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+        return TtsService.instance.isSpeaking;
+      });
+    }
+
+    if (mounted && _currentIndex >= _paragraphs.length - 1) {
+      setState(() {
+        _isPlaying = false;
+        _currentIndex = 0; // Reset after finishing
+      });
+      await _saveBookmark();
+    }
+  }
+
+  Future<void> _onRewind() async {
+    await TtsService.instance.stop();
+    setState(() {
+      _currentIndex = (_currentIndex - 1).clamp(0, _paragraphs.length - 1);
+      _isPlaying = true;
+    });
+    await _saveBookmark();
+    await _speakFromCurrentIndex();
+  }
+
+  Future<void> _onForward() async {
+    await TtsService.instance.stop();
+    setState(() {
+      _currentIndex = (_currentIndex + 1).clamp(0, _paragraphs.length - 1);
+      _isPlaying = true;
+    });
+    await _saveBookmark();
+    await _speakFromCurrentIndex();
+  }
+
+  // ── Save document dialog ──────────────────────────────────────────────────
 
   void _onDownload() {
     final titleController = TextEditingController(text: _title);
@@ -142,10 +230,19 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     );
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────
+  @override
+  void dispose() {
+    TtsService.instance.stop();
+    super.dispose();
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final double progress =
+        _paragraphs.isEmpty ? 0 : (_currentIndex + 1) / _paragraphs.length;
+
     // Double-tap anywhere on the screen toggles play/pause (SDS requirement)
     return GestureDetector(
       onDoubleTap: _togglePlay,
@@ -169,6 +266,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                   children: [
                     IconButton(
                       onPressed: () {
+                        TtsService.instance.stop();
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
@@ -215,7 +313,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
               // Double-tap hint
               Text(
@@ -223,6 +321,67 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   color: Colors.black38,
+                ),
+              ),
+
+              const SizedBox(height: 4),
+
+              // Reading progress bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: Colors.grey[200],
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF7B4FE0),
+                        ),
+                        minHeight: 6,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Section ${_currentIndex + 1} of ${_paragraphs.length}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: Colors.black38,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            setState(() {
+                              _currentIndex = 0;
+                              _isPlaying = false;
+                            });
+                            await TtsService.instance.stop();
+                            await _saveBookmark();
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Bookmark cleared'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'Reset bookmark',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: const Color(0xFF7B4FE0),
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
 

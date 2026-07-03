@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/tts_service.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/audio_player_screen.dart';
 
@@ -35,14 +36,9 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
     },
   ];
 
-  // Single tap → read title aloud (shows SnackBar as TTS placeholder)
+  // Single tap → read title aloud (English)
   void _onSingleTap(String title) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Reading: $title'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    TtsService.instance.speakEnglish(title);
   }
 
   // Double tap → open in AudioPlayerScreen
@@ -291,10 +287,8 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
                   ),
                   GestureDetector(
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Reading instructions aloud...'),
-                        ),
+                      TtsService.instance.speakEnglish(
+                        'Single tap to hear title. Double tap to open document. Swipe left to delete.',
                       );
                     },
                     child: Container(

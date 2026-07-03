@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/change_password_screen.dart';
 import 'package:sinhala_braille_app/screen/edit_profile_screen.dart';
-// import 'edit_profile_screen.dart';
-// import 'change_password_screen.dart';
 import 'welcome_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -12,9 +11,9 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Backend eken fetch karapu user data methanata
-    const String userName = 'John Doe';
-    const String userEmail = 'john@email.com';
+    final userProvider = UserProvider.of(context);
+    final String userName = userProvider.userName;
+    final String userEmail = userProvider.userEmail;
 
     return Scaffold(
       backgroundColor: Colors.white,

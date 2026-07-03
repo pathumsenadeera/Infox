@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
@@ -14,7 +15,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _showPassword = false;
@@ -62,17 +63,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
   // ────────────────────────────────────────────────────────────────────────
 
-  void _onVoiceInput(String field) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$field voice input – coming soon')));
-  }
-
-  void _onSpeak(String text) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Speaking: $text')));
-  }
 
   void _onLogin() {
     // Check lockout first
@@ -319,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () => _onSpeak('Forgot Password'),
+                            onTap: () => speakLabel('Forgot Password'),
                             child: const Icon(
                               Icons.volume_up,
                               color: Color(0xFF7B4FE0),
@@ -442,32 +432,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-          GestureDetector(
-            onTap: () => _onVoiceInput(fieldName),
-            child: Container(
-              width: 52,
-              height: 52,
-              margin: const EdgeInsets.only(left: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFF7B4FE0),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.mic, color: Colors.white, size: 24),
-            ),
-          ),
-          GestureDetector(
-            onTap: () => _onSpeak(label),
-            child: Container(
-              width: 52,
-              height: 52,
-              margin: const EdgeInsets.only(left: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFF7B4FE0),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.volume_up, color: Colors.white, size: 24),
-            ),
-          ),
+          buildMicButton(controller),
+          buildSpeakerButton(label),
         ],
       ),
     );

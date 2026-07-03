@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/screen/login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -9,22 +10,13 @@ class ForgotPasswordScreen extends StatefulWidget {
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with TtsInputMixin {
   final TextEditingController _emailController = TextEditingController();
 
   bool _emailSent = false; // step 1 or step 2 pennanna
 
-  void _onVoiceInput() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Email voice input - coming soon')),
-    );
-  }
-
-  void _onSpeak(String text) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Speaking: $text')));
-  }
+  void _onVoiceInput() => startVoiceDictation(_emailController);
+  void _onSpeak(String label) => speakLabel(label);
 
   void _onContinue() {
     if (_emailController.text.isEmpty) {

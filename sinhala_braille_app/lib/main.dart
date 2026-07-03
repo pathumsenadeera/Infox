@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
+import 'package:sinhala_braille_app/providers/tts_service.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/welcome_screen.dart';
 
@@ -16,6 +17,9 @@ Future<void> main() async {
   } catch (e) {
     debugPrint("Error fetching cameras: $e");
   }
+
+  // Initialise TTS + STT service
+  await TtsService.instance.init();
 
   runApp(
     AppSettings(

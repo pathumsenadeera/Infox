@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/profile_screen.dart';
 
@@ -10,7 +11,7 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen> with TtsInputMixin {
   final TextEditingController _nameController = TextEditingController();
 
   @override
@@ -21,17 +22,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  void _onVoiceInput() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Voice input for Name')));
-  }
-
-  void _onSpeak(String text) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Speaking: $text')));
-  }
+  void _onVoiceInput() => startVoiceDictation(_nameController);
+  void _onSpeak(String label) => speakLabel(label);
 
   void _onSaveChanges() {
     final newName = _nameController.text.trim();

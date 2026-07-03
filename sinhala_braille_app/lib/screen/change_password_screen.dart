@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/profile_screen.dart';
 
@@ -10,7 +11,7 @@ class ChangePasswordScreen extends StatefulWidget {
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInputMixin {
   final TextEditingController _currentPasswordController =
       TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
@@ -22,17 +23,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
 
-  void _onVoiceInput(String field) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$field voice input')));
-  }
-
-  void _onSpeak(String text) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Speaking: $text')));
-  }
+  void _onVoiceInput(TextEditingController controller) => startVoiceDictation(controller);
+  void _onSpeak(String label) => speakLabel(label);
 
   void _onSavePassword() {
     // Empty field check
@@ -306,22 +298,24 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              // Voice input (mic) button
               GestureDetector(
-                onTap: () => _onVoiceInput(fieldName),
+                onTap: () => _onVoiceInput(controller),
                 child: Container(
                   width: 44,
                   height: 44,
                   margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF7B4FE0),
+                  decoration: BoxDecoration(
+                    color: isListening ? Colors.red : const Color(0xFF7B4FE0),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.mic, color: Colors.white, size: 20),
+                  child: Icon(
+                    isListening ? Icons.mic_off : Icons.mic,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              // Speaker (TTS) button
               GestureDetector(
                 onTap: () => _onSpeak(label),
                 child: Container(

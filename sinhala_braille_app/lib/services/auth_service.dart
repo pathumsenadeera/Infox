@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 class AuthService {
   // Replace with your actual Azure VM IP address
-  static const String baseUrl = "http://20.40.50.154:8000";
+  static const String baseUrl = "https://server.projectinfox.tech";
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -14,15 +14,17 @@ class AuthService {
     String password,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/signup'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "username": username,
-          "email": email,
-          "password": password,
-        }),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/signup'),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "username": username,
+              "email": email,
+              "password": password,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 201) {
         return {"success": true, "message": "Registered successfully"};
@@ -48,11 +50,13 @@ class AuthService {
     String password,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/login'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"username": username, "password": password}),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/login'),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({"username": username, "password": password}),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -81,11 +85,16 @@ class AuthService {
     String newUsername,
   ) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/update-username'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"user_id": int.parse(userId), "new_username": newUsername}),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/update-username'),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "user_id": int.parse(userId),
+              "new_username": newUsername,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         return {"success": true, "message": "Username updated successfully"};
@@ -116,15 +125,17 @@ class AuthService {
     String newPassword,
   ) async {
     try {
-      final response = await http.put(
-        Uri.parse('$baseUrl/change-password'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "user_id": int.parse(userId),
-          "current_password": currentPassword,
-          "new_password": newPassword,
-        }),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/change-password'),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "user_id": int.parse(userId),
+              "current_password": currentPassword,
+              "new_password": newPassword,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         return {"success": true, "message": "Password changed successfully"};

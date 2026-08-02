@@ -1,0 +1,65 @@
+﻿import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+
+/// Service responsible for uploading captured Braille images to the backend
+/// server and receiving the translated Sinhala text in response.
+///
+/// Backend pipeline:
+///   1. Receive full-page JPEG
+///   2. Run YOLOv8 page-detect model -> crop to braille page
+///   3. Run dot-segmentation model -> extract braille dots
+///   4. Translate -> return Sinhala Unicode text
+class ScanService {
+  static const String _baseUrl = 'https://server.projectinfox.tech';
+
+  /// Uploads a full-resolution Braille page image for backend processing.
+  /// Returns a [ScanResult] on success, throws on network or server error.
+  static Future<ScanResult> uploadBrailleImage({
+    required File imageFile,
+    required int userId,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/scan');
+
+    final request = http.MultipartRequest('POST', uri)
+      ..fields['user_id'] = userId.toString()
+      ..files.add(
+        await http.MultipartFile.fromPath('image', imageFile.path),
+      );
+
+    // 90s timeout - model inference on the server can take time
+    final streamedResponse = await request
+        .send()
+        .timeout(const Duration(seconds: 90));
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      return ScanResult.fromJson(data);
+    } else {
+      final errorBody = json.decode(response.body) as Map<String, dynamic>;
+      throw Exception(errorBody['detail'] ?? 'Server error ${response.statusCode}');
+    }
+  }
+}
+
+/// Data class representing the result of a Braille scan + translation.
+class ScanResult {
+  final String translatedText;
+  final double confidence;
+  final int? docId;
+
+  const ScanResult({
+    required this.translatedText,
+    required this.confidence,
+    this.docId,
+  });
+
+  factory ScanResult.fromJson(Map<String, dynamic> json) {
+    return ScanResult(
+      translatedText: json['translated_text'] as String? ?? '',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      docId: json['doc_id'] as int?,
+    );
+  }
+}

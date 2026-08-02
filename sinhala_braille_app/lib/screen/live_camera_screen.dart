@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sinhala_braille_app/main.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/audio_player_screen.dart';
+// TODO: Uncomment when backend /scan endpoint is ready
+// import 'package:sinhala_braille_app/services/scan_service.dart';
 
 class LiveCameraScreen extends StatefulWidget {
   const LiveCameraScreen({super.key});
@@ -16,7 +20,7 @@ class LiveCameraScreen extends StatefulWidget {
 }
 
 class _LiveCameraScreenState extends State<LiveCameraScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
 
@@ -27,11 +31,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   bool _isAligned = false;
   Color _guidanceColor = Colors.white;
 
-  // ── Hold-window timer & countdown ────────────────────────────────────────
+  // Hold-window timer & countdown
   static const _holdDuration = Duration(milliseconds: 1500);
   Timer? _captureTimer;
-  double _holdProgress = 0.0; // 0.0 → 1.0 during the 1.5 s hold window
+  double _holdProgress = 0.0;
   Timer? _progressTimer;
+  bool _isCapturing = false;
 
   // ── EMA (Exponential Moving Average) – simulated Kalman smoothing ────────
   // Alpha close to 1 = fast response; close to 0 = heavy smoothing.
@@ -47,19 +52,43 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeCameraAndSensors();
+  }
+
+  /// Re-apply torch when the app comes back to the foreground
+  /// (e.g. after the user switches apps or returns from AudioPlayerScreen).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _enableTorch();
+    }
+  }
+
+  Future<void> _enableTorch() async {
+    try {
+      if (_cameraController != null &&
+          _cameraController!.value.isInitialized) {
+        await _cameraController!.setFlashMode(FlashMode.torch);
+      }
+    } catch (e) {
+      debugPrint('Torch error: $e');
+    }
   }
 
   Future<void> _initializeCameraAndSensors() async {
     if (cameras.isNotEmpty) {
       _cameraController = CameraController(
         cameras[0],
-        ResolutionPreset.high,
+        ResolutionPreset.max,   // Maximum sensor resolution for best backend quality
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
       try {
         await _cameraController!.initialize();
-        await _cameraController!.setFlashMode(FlashMode.torch);
+        // Small delay ensures the hardware is fully ready before enabling torch
+        await Future.delayed(const Duration(milliseconds: 300));
+        await _enableTorch();
         if (mounted) setState(() => _isCameraInitialized = true);
       } catch (e) {
         debugPrint('Camera init error: $e');
@@ -147,7 +176,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       setState(() => _holdProgress = progress);
     });
 
-    _captureTimer = Timer(_holdDuration, _captureAndNavigate);
+    _captureTimer = Timer(_holdDuration, _captureAndSave);
   }
 
   void _cancelHoldWindow() {
@@ -157,16 +186,82 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     _progressTimer = null;
   }
 
-  void _captureAndNavigate() {
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const AudioPlayerScreen()),
-    );
+  Future<void> _captureAndSave() async {
+    if (!mounted || _isCapturing) return;
+    setState(() => _isCapturing = true);
+
+    try {
+      // Take the full-resolution JPEG photo
+      final XFile photo = await _cameraController!.takePicture();
+      debugPrint('Photo captured: ${photo.path}');
+
+      // Save to public Downloads folder — visible in Files app immediately
+      Directory scansDir = Directory('/storage/emulated/0/Download/BrailleScans');
+      try {
+        if (!await scansDir.exists()) await scansDir.create(recursive: true);
+      } catch (_) {
+        // Fallback to app-specific external dir on permission failure
+        final externalDir = await getExternalStorageDirectory();
+        scansDir = Directory('${externalDir!.path}/BrailleScans');
+        if (!await scansDir.exists()) await scansDir.create(recursive: true);
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final savePath = '${scansDir.path}/braille_scan_$timestamp.jpg';
+
+      // Direct copy — zero quality loss, no decode/re-encode
+      await File(photo.path).copy(savePath);
+      debugPrint('Saved: $savePath');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Image saved to Downloads/BrailleScans')),
+      );
+
+      // ── TODO: Backend upload ─────────────────────────────────────────────
+      // When the backend /scan endpoint is ready:
+      //
+      // 1. Uncomment the scan_service.dart import at the top of this file.
+      // 2. Uncomment the block below.
+      //
+      // final user = UserProvider.of(context);
+      // final result = await ScanService.uploadBrailleImage(
+      //   imageFile: File(savePath),
+      //   userId: int.parse(user.userId ?? '0'),
+      // );
+      // if (!mounted) return;
+      // Navigator.pushReplacement(context, MaterialPageRoute(
+      //   builder: (_) => AudioPlayerScreen(translatedText: result.translatedText),
+      // ));
+      // return;
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // Temporary: navigate without translated text until backend is live
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AudioPlayerScreen()),
+        );
+      }
+    } catch (e) {
+      debugPrint('Capture error: $e');
+      if (mounted) {
+        setState(() {
+          _isCapturing = false;
+          _isAligned = false;
+          _holdProgress = 0.0;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Capture failed: $e')),
+        );
+      }
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _accelerometerSubscription?.cancel();
     _cancelHoldWindow();
     _cameraController?.dispose();
@@ -250,8 +345,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                           children: [
                             CameraPreview(_cameraController!),
 
-                            // Darkened overlay
-                            Container(color: Colors.black45),
+                            // Remove darkened overlay when aligned so braille is visible
+                            if (!_isAligned)
+                              Container(color: Colors.black38),
 
                             // Guidance text
                             Align(
@@ -286,6 +382,30 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                                     child: _HoldProgressRing(
                                       progress: _holdProgress,
                                     ),
+                                  ),
+                                ),
+                              ),
+
+                            // Capturing spinner overlay
+                            if (_isCapturing)
+                              Container(
+                                color: Colors.black54,
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const CircularProgressIndicator(
+                                          color: Colors.greenAccent),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'SAVING...',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -325,7 +445,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  _isAligned ? 'AUTO-CAPTURE IN PROGRESS' : 'AUTO-CAPTURE IS ACTIVE',
+                  _isCapturing
+                      ? 'CAPTURING IMAGE...'
+                      : _isAligned
+                          ? 'AUTO-CAPTURE IN PROGRESS'
+                          : 'AUTO-CAPTURE IS ACTIVE',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                     fontSize: 22,

@@ -10,11 +10,7 @@ class AudioPlayerScreen extends StatefulWidget {
   final String? translatedText;
   final String? documentTitle;
 
-  const AudioPlayerScreen({
-    super.key,
-    this.translatedText,
-    this.documentTitle,
-  });
+  const AudioPlayerScreen({super.key, this.translatedText, this.documentTitle});
 
   @override
   State<AudioPlayerScreen> createState() => _AudioPlayerScreenState();
@@ -53,7 +49,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   List<String> _splitIntoParagraphs(String text) {
     // Split by double newlines first
     final parts =
-        text.split(RegExp(r'\n\s*\n')).where((s) => s.trim().isNotEmpty).toList();
+        text
+            .split(RegExp(r'\n\s*\n'))
+            .where((s) => s.trim().isNotEmpty)
+            .toList();
     if (parts.length > 1) return parts;
     // Fall back to sentence splitting
     return text
@@ -148,85 +147,93 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Save Document',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF7B4FE0),
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Enter a name for this document:',
-              style: GoogleFonts.poppins(fontSize: 13, color: Colors.black54),
+      builder:
+          (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: titleController,
-              style: GoogleFonts.poppins(fontSize: 15),
-              decoration: InputDecoration(
-                hintText: 'Document name',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF7B4FE0)),
+            title: Text(
+              'Save Document',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF7B4FE0),
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Enter a name for this document:',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: Colors.black54,
+                  ),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Color(0xFF7B4FE0),
-                    width: 2,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleController,
+                  style: GoogleFonts.poppins(fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: 'Document name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF7B4FE0)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF7B4FE0),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.poppins(color: Colors.black54),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7B4FE0),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  final name = titleController.text.trim();
+                  Navigator.pop(ctx);
+                  if (name.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a document name.'),
+                      ),
+                    );
+                    return;
+                  }
+                  // Duplicate check + save will be wired to backend in Phase 2
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('"$name" saved successfully!'),
+                      backgroundColor: Colors.green[700],
+                    ),
+                  );
+                },
+                child: Text(
+                  'Save',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.poppins(color: Colors.black54),
-            ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF7B4FE0),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: () {
-              final name = titleController.text.trim();
-              Navigator.pop(ctx);
-              if (name.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a document name.')),
-                );
-                return;
-              }
-              // Duplicate check + save will be wired to backend in Phase 2
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('"$name" saved successfully!'),
-                  backgroundColor: Colors.green[700],
-                ),
-              );
-            },
-            child: Text(
-              'Save',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -318,10 +325,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               // Double-tap hint
               Text(
                 'Double-tap anywhere to Play / Pause',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: Colors.black38,
-                ),
+                style: GoogleFonts.poppins(fontSize: 12, color: Colors.black38),
               ),
 
               const SizedBox(height: 4),

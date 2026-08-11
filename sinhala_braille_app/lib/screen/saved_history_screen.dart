@@ -17,7 +17,7 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
     {
       'title': 'Math Notes – Chapter 3',
       'date': '2026-03-05',
-      'text': 'ගණිතය – පරිච්ඡේදය 3\n\nසංඛ්‍යා ගෙඩිති සහ ක්‍රම...',
+      'text': 'ගණිතය – පරිච්ඡේදය 3\n\nසංඛ්‍යා රටා සහ ක්‍රම...',
     },
     {
       'title': 'Science Chapter 2',
@@ -46,10 +46,11 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AudioPlayerScreen(
-          translatedText: doc['text'],
-          documentTitle: doc['title'],
-        ),
+        builder:
+            (_) => AudioPlayerScreen(
+              translatedText: doc['text'],
+              documentTitle: doc['title'],
+            ),
       ),
     );
   }
@@ -121,126 +122,135 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
 
             // Document list with swipe-to-delete
             Expanded(
-              child: _documents.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.history, size: 64, color: Colors.grey[400]),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No saved documents yet.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              color: Colors.grey[500],
+              child:
+                  _documents.isEmpty
+                      ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.history,
+                              size: 64,
+                              color: Colors.grey[400],
                             ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 4,
-                      ),
-                      itemCount: _documents.length,
-                      itemBuilder: (context, index) {
-                        final doc = _documents[index];
-                        return Dismissible(
-                          key: Key('${doc['title']}_$index'),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 24),
-                            margin: const EdgeInsets.only(bottom: 18),
-                            decoration: BoxDecoration(
-                              color: Colors.red[600],
-                              borderRadius: BorderRadius.circular(20),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No saved documents yet.',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                color: Colors.grey[500],
+                              ),
                             ),
-                            child: const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.delete, color: Colors.white, size: 30),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Delete',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          onDismissed: (_) => _onDeleteDoc(index),
-                          child: GestureDetector(
-                            onTap: () => _onSingleTap(doc['title']!),
-                            onDoubleTap: () => _onDoubleTap(doc),
-                            child: Container(
+                          ],
+                        ),
+                      )
+                      : ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 4,
+                        ),
+                        itemCount: _documents.length,
+                        itemBuilder: (context, index) {
+                          final doc = _documents[index];
+                          return Dismissible(
+                            key: Key('${doc['title']}_$index'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 24),
                               margin: const EdgeInsets.only(bottom: 18),
-                              padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF7B4FE0),
+                                color: Colors.red[600],
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: Row(
+                              child: const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Document',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                            color: Colors.white70,
-                                          ),
-                                        ),
-                                        Text(
-                                          doc['title']!,
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Saved: ${doc['date']!}',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                            color: Colors.white70,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                  Icon(
+                                    Icons.delete,
+                                    color: Colors.white,
+                                    size: 30,
                                   ),
-                                  GestureDetector(
-                                    onTap: () => _onDoubleTap(doc),
-                                    child: Container(
-                                      width: 56,
-                                      height: 56,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFFD9D9D9),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.play_arrow,
-                                        color: Color(0xFF7B4FE0),
-                                        size: 32,
-                                      ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Delete',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                            onDismissed: (_) => _onDeleteDoc(index),
+                            child: GestureDetector(
+                              onTap: () => _onSingleTap(doc['title']!),
+                              onDoubleTap: () => _onDoubleTap(doc),
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 18),
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF7B4FE0),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Document',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                          Text(
+                                            doc['title']!,
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Saved: ${doc['date']!}',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () => _onDoubleTap(doc),
+                                      child: Container(
+                                        width: 56,
+                                        height: 56,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFD9D9D9),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.play_arrow,
+                                          color: Color(0xFF7B4FE0),
+                                          size: 32,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
             ),
 
             // Bottom instruction bar

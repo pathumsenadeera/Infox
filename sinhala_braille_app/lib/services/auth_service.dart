@@ -60,7 +60,12 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return {"success": true, "user_id": data['user_id']};
+        return {
+          "success": true,
+          "user_id": data['user_id'],
+          "username": data['username'],
+          "email": data['email'],
+        };
       } else {
         return {"success": false, "message": "Invalid username or password"};
       }

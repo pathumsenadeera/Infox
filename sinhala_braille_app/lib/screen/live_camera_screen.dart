@@ -24,15 +24,20 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
 
+  /// True only after the mandatory warm-up window has elapsed.
+  /// Prevents captures while AE/AF/AWB are still settling.
+  bool _cameraWarmUpDone = false;
+
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
 
   // ── Guidance state ───────────────────────────────────────────────────────
-  String _guidanceMessage = 'HOLD DEVICE STEADY';
+  String _guidanceMessage = 'INITIALIZING...';
   bool _isAligned = false;
   Color _guidanceColor = Colors.white;
 
   // Hold-window timer & countdown
-  static const _holdDuration = Duration(milliseconds: 1500);
+  // 3 s hold window — gives enough time to confirm the device is truly stable.
+  static const _holdDuration = Duration(milliseconds: 3000);
   Timer? _captureTimer;
   double _holdProgress = 0.0;
   Timer? _progressTimer;
@@ -40,14 +45,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
 
   // ── EMA (Exponential Moving Average) – simulated Kalman smoothing ────────
   // Alpha close to 1 = fast response; close to 0 = heavy smoothing.
-  static const double _alpha = 0.15;
+  // 0.12 gives slightly more smoothing to filter micro-jitter.
+  static const double _alpha = 0.12;
   double _smoothX = 0;
   double _smoothY = 0;
   double _smoothZ = 9.8;
 
   // ── Alignment thresholds ─────────────────────────────────────────────────
-  static const double _zMin = 8.5;   // device must be mostly face-up/flat
-  static const double _xyMax = 1.8;  // max lateral tilt allowed
+  static const double _zMin = 8.8;   // device must be mostly face-up/flat (tighter)
+  static const double _xyMax = 1.5;  // max lateral tilt allowed (tighter)
 
   @override
   void initState() {
@@ -86,10 +92,23 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       );
       try {
         await _cameraController!.initialize();
-        // Small delay ensures the hardware is fully ready before enabling torch
-        await Future.delayed(const Duration(milliseconds: 300));
+        // Brief pause so the sensor pipeline (torch, AE, AF, AWB) can start.
+        await Future.delayed(const Duration(milliseconds: 500));
         await _enableTorch();
         if (mounted) setState(() => _isCameraInitialized = true);
+
+        // ── Warm-up guard ────────────────────────────────────────────────
+        // Block capture for 2 seconds after init so that auto-exposure,
+        // auto-focus, and auto-white-balance have time to fully settle.
+        // The guidance message will show 'STABILIZING...' during this window.
+        await Future.delayed(const Duration(milliseconds: 2000));
+        if (mounted) {
+          setState(() {
+            _cameraWarmUpDone = true;
+            _guidanceMessage = 'HOLD DEVICE STEADY';
+          });
+        }
+        // ─────────────────────────────────────────────────────────────────
       } catch (e) {
         debugPrint('Camera init error: $e');
       }
@@ -112,6 +131,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   /// Evaluate smoothed sensor data, update guidance message and trigger capture.
   void _updateGuidance(double x, double y, double z) {
     if (!mounted) return;
+
+    // If camera is still warming up, show a stabilising message and skip logic.
+    if (!_cameraWarmUpDone) {
+      setState(() {
+        _guidanceMessage = 'STABILIZING CAMERA...';
+        _guidanceColor = Colors.white54;
+      });
+      return;
+    }
 
     final bool zOk = z >= _zMin;
     final bool xyOk = x.abs() < _xyMax && y.abs() < _xyMax;
@@ -147,7 +175,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       _guidanceColor = color;
     });
 
-    if (aligned && !_isAligned) {
+    if (aligned && !_isAligned && !_isCapturing) {
       setState(() => _isAligned = true);
       _startHoldWindow();
     } else if (!aligned && _isAligned) {
@@ -247,11 +275,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     } catch (e) {
       debugPrint('Capture error: $e');
       if (mounted) {
+        // Reset ALL capture-related state so the hold-window can restart cleanly.
         setState(() {
           _isCapturing = false;
           _isAligned = false;
           _holdProgress = 0.0;
         });
+        _cancelHoldWindow();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Capture failed: $e')),
         );
@@ -479,7 +509,7 @@ class _HoldProgressRing extends StatelessWidget {
       painter: _RingPainter(progress: progress),
       child: Center(
         child: Text(
-          '${((1 - progress) * 1.5).toStringAsFixed(1)}s',
+          '${((1 - progress) * 3.0).toStringAsFixed(1)}s',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.bold,

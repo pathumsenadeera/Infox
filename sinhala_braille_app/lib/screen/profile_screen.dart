@@ -289,8 +289,11 @@ class ProfileScreen extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
-                              onPressed: () {
-                                // Logout logic - session clear karanawa
+                              onPressed: () async {
+                                // Clear saved session so next app launch
+                                // shows the Welcome screen, not auto-login.
+                                await UserProvider.of(context).logout();
+                                if (!context.mounted) return;
                                 Navigator.pushAndRemoveUntil(
                                   context,
                                   MaterialPageRoute(

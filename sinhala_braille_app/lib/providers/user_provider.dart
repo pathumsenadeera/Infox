@@ -32,10 +32,17 @@ class UserNotifier extends ChangeNotifier {
 
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    _userName = prefs.getString('user_name') ?? '';
+
+    // Only restore from prefs if login() hasn't already populated state.
+    // login() is async too — if it finishes first and sets _userId,
+    // we must not overwrite its values with a possibly stale prefs read.
+    if (_userId != null) return;
+
+    _userName  = prefs.getString('user_name') ?? '';
     _userEmail = prefs.getString('user_email') ?? '';
-    _password = prefs.getString('user_password') ?? '';
-    _userId = prefs.getString('user_id');
+    _password  = prefs.getString('user_password') ?? '';
+    _userId    = prefs.getString('user_id');
+
     notifyListeners();
   }
 
@@ -74,12 +81,14 @@ class UserNotifier extends ChangeNotifier {
   }
 
   /// Calls the backend login endpoint.
+  /// The /login response must include user_id, username, and email.
   Future<Map<String, dynamic>> login(String username, String password) async {
     final result = await AuthService.login(username, password);
     if (result['success'] == true) {
-      _userName = username;
-      _password = password;
-      _userId = result['user_id']?.toString();
+      _userId    = result['user_id']?.toString();
+      _userName  = result['username'] as String? ?? username;
+      _userEmail = result['email'] as String? ?? '';
+      _password  = password;
       await _saveToPrefs();
       notifyListeners();
     }
@@ -125,5 +134,19 @@ class UserNotifier extends ChangeNotifier {
       notifyListeners();
     }
     return result;
+  }
+
+  /// Clears all saved session data — call this on logout.
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('user_id');
+    await prefs.remove('user_name');
+    await prefs.remove('user_email');
+    await prefs.remove('user_password');
+    _userName = '';
+    _userEmail = '';
+    _password = '';
+    _userId = null;
+    notifyListeners();
   }
 }

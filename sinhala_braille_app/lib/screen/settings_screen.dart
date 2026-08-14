@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
+import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -10,6 +11,8 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Read global settings – this widget rebuilds automatically when they change
     final settings = AppSettings.of(context);
+    final userIdStr = UserProvider.of(context).userId;
+    final userId = userIdStr != null ? int.tryParse(userIdStr) : null;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -90,6 +93,7 @@ class SettingsScreen extends StatelessWidget {
                                 icon: Icons.remove,
                                 onTap: () => settings.setSpeechRate(
                                   settings.speechRate - 0.1,
+                                  userId: userId,
                                 ),
                               ),
                               Column(
@@ -115,6 +119,7 @@ class SettingsScreen extends StatelessWidget {
                                 icon: Icons.add,
                                 onTap: () => settings.setSpeechRate(
                                   settings.speechRate + 0.1,
+                                  userId: userId,
                                 ),
                               ),
                             ],
@@ -140,7 +145,7 @@ class SettingsScreen extends StatelessWidget {
                             children: [
                               // Male option
                               GestureDetector(
-                                onTap: () => settings.setVoiceType('Male'),
+                                onTap: () => settings.setVoiceType('Male', userId: userId),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   padding: const EdgeInsets.symmetric(
@@ -177,7 +182,7 @@ class SettingsScreen extends StatelessWidget {
                               ),
                               // Female option
                               GestureDetector(
-                                onTap: () => settings.setVoiceType('Female'),
+                                onTap: () => settings.setVoiceType('Female', userId: userId),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   padding: const EdgeInsets.symmetric(
@@ -232,7 +237,7 @@ class SettingsScreen extends StatelessWidget {
                               // ON
                               Expanded(
                                 child: GestureDetector(
-                                  onTap: () => settings.setHaptic(true),
+                                  onTap: () => settings.setHaptic(true, userId: userId),
                                   child: AnimatedContainer(
                                     duration: const Duration(milliseconds: 200),
                                     padding: const EdgeInsets.symmetric(
@@ -260,7 +265,7 @@ class SettingsScreen extends StatelessWidget {
                               // OFF
                               Expanded(
                                 child: GestureDetector(
-                                  onTap: () => settings.setHaptic(false),
+                                  onTap: () => settings.setHaptic(false, userId: userId),
                                   child: AnimatedContainer(
                                     duration: const Duration(milliseconds: 200),
                                     padding: const EdgeInsets.symmetric(

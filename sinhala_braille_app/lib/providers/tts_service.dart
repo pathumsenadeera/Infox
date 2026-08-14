@@ -17,6 +17,9 @@ class TtsService {
   bool _sttAvailable = false;
   bool _speaking = false;
 
+  /// All voices available on the current device, cached at init time.
+  List<Map<String, String>> _voices = [];
+
   bool get isSpeaking => _speaking;
 
   // ── Initialisation ──────────────────────────────────────────────────────
@@ -32,6 +35,19 @@ class TtsService {
     _tts.setCancelHandler(() => _speaking = false);
     _tts.setErrorHandler((_) => _speaking = false);
 
+    // Cache all available voices for gender-based selection later.
+    try {
+      final dynamic raw = await _tts.getVoices;
+      if (raw is List) {
+        _voices = raw
+            .whereType<Map>()
+            .map((v) => v.map((k, val) => MapEntry(k.toString(), val.toString())))
+            .toList();
+      }
+    } catch (_) {
+      // getVoices not supported on this engine — gender selection will be skipped.
+    }
+
     // Try to initialize STT (may fail on emulators)
     try {
       _sttAvailable = await _stt.initialize(
@@ -44,24 +60,75 @@ class TtsService {
     }
   }
 
+  // ── Voice selection helper ──────────────────────────────────────────────
+
+  /// Tries to find a voice matching [locale] and [voiceType] ('Male'/'Female').
+  /// Checks the 'gender' field first, then falls back to the voice name.
+  /// Returns null if no matching voice is found (caller keeps current voice).
+  Map<String, String>? _findVoice(String locale, String voiceType) {
+    if (_voices.isEmpty) return null;
+    final wantedGender = voiceType.toLowerCase(); // 'male' or 'female'
+    final langCode = locale.split('-')[0].toLowerCase(); // e.g. 'si' from 'si-LK'
+
+    // Filter voices that at least match the language code.
+    final localeVoices = _voices.where((v) {
+      final vLocale = (v['locale'] ?? '').toLowerCase();
+      return vLocale.startsWith(langCode);
+    }).toList();
+
+    if (localeVoices.isEmpty) return null;
+
+    // Try matching by gender field (Android usually provides this).
+    final byGender = localeVoices.where((v) =>
+        (v['gender'] ?? '').toLowerCase() == wantedGender).toList();
+    if (byGender.isNotEmpty) return byGender.first;
+
+    // Try matching by voice name containing 'male'/'female'.
+    final byName = localeVoices.where((v) =>
+        (v['name'] ?? '').toLowerCase().contains(wantedGender)).toList();
+    if (byName.isNotEmpty) return byName.first;
+
+    // No gender match — return first available voice for the locale as fallback.
+    return localeVoices.first;
+  }
+
   // ── Speak Sinhala (si-LK) ───────────────────────────────────────────────
 
-  Future<void> speakSinhala(String text) async {
+  Future<void> speakSinhala(
+    String text, {
+    double speechRate = 0.5,
+    String voiceType = 'Female',
+  }) async {
     await _tts.stop();
+    await _tts.setSpeechRate(speechRate);
     await _tts.setLanguage('si-LK');
+
+    // Try to apply a gender-matching voice for Sinhala.
+    final voice = _findVoice('si-LK', voiceType);
+    if (voice != null) await _tts.setVoice(voice);
+
     // Fallback: if Sinhala not supported, use English
     final List<dynamic> langs = await _tts.getLanguages;
     if (!langs.contains('si-LK') && !langs.contains('si')) {
       await _tts.setLanguage('en-US');
+      final enVoice = _findVoice('en-US', voiceType);
+      if (enVoice != null) await _tts.setVoice(enVoice);
     }
     await _tts.speak(text);
   }
 
   // ── Speak English (en-US) ───────────────────────────────────────────────
 
-  Future<void> speakEnglish(String text) async {
+  Future<void> speakEnglish(
+    String text, {
+    double speechRate = 0.5,
+    String voiceType = 'Female',
+  }) async {
     await _tts.stop();
+    await _tts.setSpeechRate(speechRate);
     await _tts.setLanguage('en-US');
+    final voice = _findVoice('en-US', voiceType);
+    if (voice != null) await _tts.setVoice(voice);
     await _tts.speak(text);
   }
 

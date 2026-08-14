@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
 import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
@@ -102,6 +103,14 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
       _failedAttempts = 0;
       _lockoutTimer?.cancel();
 
+      // Load the user's saved settings from the server before navigating.
+      final rawId = result['user_id'];
+      final userId = rawId is int ? rawId : int.tryParse(rawId.toString());
+      if (userId != null && mounted) {
+        await AppSettings.of(context).loadFromServer(userId);
+      }
+
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const AssistiveReaderScreen()),

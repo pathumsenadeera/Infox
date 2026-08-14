@@ -42,20 +42,34 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   /// Cached Future — created once in initState so it never re-fires
   /// when Flutter rebuilds MyApp (e.g. when returning from recent apps).
-  late final Future<bool> _loginCheckFuture;
+  late final Future<String?> _loginCheckFuture;
 
   @override
   void initState() {
     super.initState();
-    _loginCheckFuture = _isLoggedIn();
+    _loginCheckFuture = _getLoggedInUserId();
+
+    // Load settings exactly once after the login check resolves.
+    // Doing this here (not inside the FutureBuilder builder) prevents
+    // an infinite loop: builder → notifyListeners → rebuild → builder → ...
+    _loginCheckFuture.then((userId) {
+      if (userId == null || !mounted) return;
+      final parsedId = int.tryParse(userId);
+      if (parsedId == null) return;
+      // addPostFrameCallback ensures the InheritedWidget tree is ready.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) AppSettings.of(context).loadFromServer(parsedId);
+      });
+    });
   }
 
   /// Reads SharedPreferences once to decide whether the user is already
-  /// logged in (user_id saved) or should see the welcome/auth flow.
-  static Future<bool> _isLoggedIn() async {
+  /// logged in. Returns the user_id string if logged in, null otherwise.
+  static Future<String?> _getLoggedInUserId() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getString('user_id');
-    return userId != null && userId.isNotEmpty;
+    if (userId != null && userId.isNotEmpty) return userId;
+    return null;
   }
 
   @override
@@ -68,7 +82,7 @@ class _MyAppState extends State<MyApp> {
         textTheme: GoogleFonts.poppinsTextTheme(),
         useMaterial3: true,
       ),
-      home: FutureBuilder<bool>(
+      home: FutureBuilder<String?>(
         future: _loginCheckFuture,
         builder: (context, snapshot) {
           // Show a splash while we read prefs (< 50 ms typically)
@@ -81,10 +95,8 @@ class _MyAppState extends State<MyApp> {
             );
           }
 
-          final loggedIn = snapshot.data ?? false;
-          return loggedIn
-              ? const AssistiveReaderScreen()
-              : const WelcomeScreen();
+          final loggedIn = snapshot.data != null;
+          return loggedIn ? const AssistiveReaderScreen() : const WelcomeScreen();
         },
       ),
     );

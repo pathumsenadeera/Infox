@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
 import 'package:sinhala_braille_app/providers/tts_service.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 
@@ -103,7 +104,14 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       if (!mounted || !_isPlaying) break;
       setState(() => _currentIndex = i);
       await _saveBookmark();
-      await TtsService.instance.speakSinhala(_paragraphs[i]);
+      // Use speech rate and voice type from user settings
+      final rate = AppSettings.of(context).speechRate;
+      final voice = AppSettings.of(context).voiceType;
+      await TtsService.instance.speakSinhala(
+        _paragraphs[i],
+        speechRate: rate,
+        voiceType: voice,
+      );
       // Wait for this chunk to finish before moving to the next
       await Future.doWhile(() async {
         await Future.delayed(const Duration(milliseconds: 200));

@@ -10,14 +10,21 @@ class AudioPlayerScreen extends StatefulWidget {
   /// Falls back to sample Sinhala Unicode text if not provided.
   final String? translatedText;
   final String? documentTitle;
+  final String? documentId;
 
-  const AudioPlayerScreen({super.key, this.translatedText, this.documentTitle});
+  const AudioPlayerScreen({
+    super.key,
+    this.translatedText,
+    this.documentTitle,
+    this.documentId,
+  });
 
   @override
   State<AudioPlayerScreen> createState() => _AudioPlayerScreenState();
 }
 
-class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
+class _AudioPlayerScreenState extends State<AudioPlayerScreen>
+    with WidgetsBindingObserver {
   bool _isPlaying = false;
 
   // Sample Sinhala Unicode text (Braille translation placeholder)
@@ -32,19 +39,41 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
           : _sampleSinhalaText;
 
   String get _title => widget.documentTitle ?? 'Scan Result';
+  String get _identifier => widget.documentId ?? _title;
 
   // ── Paragraph / sentence tracking for rewind/forward + bookmark ──────────
   late List<String> _paragraphs;
   int _currentIndex = 0;
 
-  static String _bookmarkKey(String title) => 'bookmark_$title';
+  static String _bookmarkKey(String id) => 'bookmark_$id';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Split on blank lines (paragraphs) then fall back to sentences
     _paragraphs = _splitIntoParagraphs(_displayText);
     _loadBookmark();
+
+    // Verify language pack availability upon loading audio player (FR 24)
+    TtsService.instance.verifySinhalaVoicePack();
+
+    // Track word/character progress (FR 25)
+    TtsService.instance.onProgress = (text, start, end, word) {
+      if (mounted) {
+        debugPrint('Reading word: $word ($start-$end)');
+      }
+    };
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Save reading position when app goes into background or pauses (FR 27)
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _saveBookmark();
+      TtsService.instance.pause();
+      if (mounted) setState(() => _isPlaying = false);
+    }
   }
 
   List<String> _splitIntoParagraphs(String text) {
@@ -64,7 +93,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   Future<void> _loadBookmark() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getInt(_bookmarkKey(_title)) ?? 0;
+    final saved = prefs.getInt(_bookmarkKey(_identifier)) ?? 0;
     if (saved > 0 && saved < _paragraphs.length) {
       setState(() => _currentIndex = saved);
       if (mounted) {
@@ -81,7 +110,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   Future<void> _saveBookmark() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_bookmarkKey(_title), _currentIndex);
+    await prefs.setInt(_bookmarkKey(_identifier), _currentIndex);
   }
 
   // ── Playback controls ─────────────────────────────────────────────────────
@@ -98,15 +127,14 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   Future<void> _speakFromCurrentIndex() async {
     if (_paragraphs.isEmpty) return;
+    final rate = AppSettings.of(context).speechRate;
+    final voice = AppSettings.of(context).voiceType;
 
     // Speak each paragraph in sequence starting from _currentIndex
     for (int i = _currentIndex; i < _paragraphs.length; i++) {
       if (!mounted || !_isPlaying) break;
       setState(() => _currentIndex = i);
       await _saveBookmark();
-      // Use speech rate and voice type from user settings
-      final rate = AppSettings.of(context).speechRate;
-      final voice = AppSettings.of(context).voiceType;
       await TtsService.instance.speakSinhala(
         _paragraphs[i],
         speechRate: rate,
@@ -247,7 +275,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _saveBookmark();
     TtsService.instance.stop();
+    TtsService.instance.onProgress = null;
     super.dispose();
   }
 

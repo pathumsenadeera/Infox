@@ -16,11 +16,18 @@ class TtsService {
 
   bool _sttAvailable = false;
   bool _speaking = false;
+  bool _isEngineReady = false;
+  bool _isSinhalaSupported = false;
 
   /// All voices available on the current device, cached at init time.
   List<Map<String, String>> _voices = [];
 
   bool get isSpeaking => _speaking;
+  bool get isEngineReady => _isEngineReady;
+  bool get isSinhalaSupported => _isSinhalaSupported;
+
+  /// Optional callback for character/word progress tracking (FR 25).
+  void Function(String text, int start, int end, String word)? onProgress;
 
   // ── Initialisation ──────────────────────────────────────────────────────
 
@@ -34,6 +41,18 @@ class TtsService {
     _tts.setCompletionHandler(() => _speaking = false);
     _tts.setCancelHandler(() => _speaking = false);
     _tts.setErrorHandler((_) => _speaking = false);
+    _tts.setProgressHandler((String text, int start, int end, String word) {
+      onProgress?.call(text, start, end, word);
+    });
+
+    // Check Sinhala language pack support (FR 24)
+    try {
+      final List<dynamic> langs = await _tts.getLanguages;
+      _isSinhalaSupported = langs.contains('si-LK') || langs.contains('si');
+    } catch (e) {
+      debugPrint('Error checking languages: $e');
+      _isSinhalaSupported = false;
+    }
 
     // Cache all available voices for gender-based selection later.
     try {
@@ -58,6 +77,8 @@ class TtsService {
       debugPrint('STT init failed: $e');
       _sttAvailable = false;
     }
+
+    _isEngineReady = true;
   }
 
   // ── Voice selection helper ──────────────────────────────────────────────
@@ -175,4 +196,28 @@ class TtsService {
   }
 
   bool get isListening => _stt.isListening;
+
+  // ── Error alerts & Language pack check (FR 24 & FR 31) ─────────────────
+
+  /// Announces a verbal alert for system failures (FR 31).
+  /// Immediately interrupts ongoing playback and speaks the error message clearly.
+  Future<void> announceError(String message, {String? errorCode}) async {
+    debugPrint('[Spoken Error Alert] Code: $errorCode | Message: $message');
+    await stop();
+    final alertText = errorCode != null ? 'Error $errorCode: $message' : message;
+    await speakEnglish(alertText, speechRate: 0.5);
+  }
+
+  /// Verifies if Sinhala language pack is installed.
+  /// If missing, announces a spoken verbal warning to the user (FR 24).
+  Future<bool> verifySinhalaVoicePack() async {
+    if (!_isSinhalaSupported) {
+      await announceError(
+        'Sinhala voice engine language pack is not installed on this device. Switching to default English voice.',
+        errorCode: 'ERR_LANG_PACK',
+      );
+      return false;
+    }
+    return true;
+  }
 }

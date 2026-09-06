@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sinhala_braille_app/main.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/audio_player_screen.dart';
+import 'package:sinhala_braille_app/providers/tts_service.dart';
 // TODO: Uncomment when backend /scan endpoint is ready
 // import 'package:sinhala_braille_app/services/scan_service.dart';
 
@@ -111,6 +112,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
         // ─────────────────────────────────────────────────────────────────
       } catch (e) {
         debugPrint('Camera init error: $e');
+        TtsService.instance.announceError(
+          'Failed to initialize camera. Please check camera permissions.',
+          errorCode: 'ERR_CAM_INIT',
+        );
       }
     }
 
@@ -282,10 +287,31 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
           _holdProgress = 0.0;
         });
         _cancelHoldWindow();
+        TtsService.instance.announceError(
+          'Image capture failed. Please hold device steady and try again.',
+          errorCode: 'ERR_CAPTURE',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Capture failed: $e')),
         );
       }
+    }
+  }
+
+  /// Aborts active scan, clears buffers, announces "Scan cancelled" and redirects to Home (FR 32).
+  Future<void> _onCancelScan() async {
+    _cancelHoldWindow();
+    _isCapturing = false;
+    _holdProgress = 0.0;
+    _isAligned = false;
+    await TtsService.instance.speakEnglish('Scan cancelled');
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const AssistiveReaderScreen(),
+        ),
+      );
     }
   }
 
@@ -302,38 +328,38 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0B0914),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Purple header
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: Color(0xFF7B4FE0),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(40),
-                  bottomRight: Radius.circular(40),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _onCancelScan();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0B0914),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Purple header
+              Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF7B4FE0),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(40),
+                    bottomRight: Radius.circular(40),
+                  ),
                 ),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AssistiveReaderScreen(),
-                        ),
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.arrow_back_sharp,
-                      size: 30,
-                      color: Colors.black,
-                    ),
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _onCancelScan,
+                      icon: const Icon(
+                        Icons.arrow_back_sharp,
+                        size: 30,
+                        color: Colors.black,
+                      ),
                     style: ButtonStyle(
                       backgroundColor: WidgetStateProperty.all(
                         Colors.grey.shade300,
@@ -492,6 +518,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
           ],
         ),
       ),
+    ),
     );
   }
 }

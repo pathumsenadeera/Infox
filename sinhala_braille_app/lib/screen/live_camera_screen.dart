@@ -36,6 +36,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   bool _isAligned = false;
   Color _guidanceColor = Colors.white;
 
+  /// Tracks the last spoken TTS instruction so we only announce when the
+  /// message changes — avoids audio spam on every accelerometer event (FR 14).
+  String _lastSpokenMessage = '';
+
   // Hold-window timer & countdown
   // 3 s hold window — gives enough time to confirm the device is truly stable.
   static const _holdDuration = Duration(milliseconds: 3000);
@@ -179,6 +183,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       _guidanceMessage = message;
       _guidanceColor = color;
     });
+
+    // ── FR 14: Announce via TTS only when the message changes ───────────────
+    // This prevents audio spam on every sensor event while still giving
+    // clear, timely verbal guidance whenever the direction changes.
+    if (message != _lastSpokenMessage) {
+      _lastSpokenMessage = message;
+      TtsService.instance.speakEnglish(message);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (aligned && !_isAligned && !_isCapturing) {
       setState(() => _isAligned = true);

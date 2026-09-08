@@ -12,42 +12,51 @@ class SavedHistoryScreen extends StatefulWidget {
 }
 
 class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
-  // Mock local document store – will be replaced by database in Phase 2
+  // Mock local document store with IDs (FR 26 & FR 27)
   final List<Map<String, String>> _documents = [
     {
+      'id': 'doc_001',
       'title': 'Math Notes – Chapter 3',
       'date': '2026-03-05',
       'text': 'ගණිතය – පරිච්ඡේදය 3\n\nසංඛ්‍යා රටා සහ ක්‍රම...',
     },
     {
+      'id': 'doc_002',
       'title': 'Science Chapter 2',
       'date': '2026-03-04',
       'text': 'විද්‍යාව – ජීව රසායනය\n\nකොෂ ව්‍යුහය සහ ක්‍රියාකාරිත්වය...',
     },
     {
+      'id': 'doc_003',
       'title': 'Sinhala Notes',
       'date': '2026-03-01',
       'text': 'සිංහල – ව්‍යාකරණය\n\nඅකුරු හා ව්‍යාකරණ නීති...',
     },
     {
+      'id': 'doc_004',
       'title': 'History – Ancient Lanka',
       'date': '2026-02-28',
       'text': 'ඉතිහාසය – පුරාණ ලංකාව\n\nඅනුරාධපුර රාජධානිය...',
     },
   ];
 
-  // Single tap → read title aloud (English)
-  void _onSingleTap(String title) {
-    TtsService.instance.speakEnglish(title);
+  // Single tap on document card → open saved document (FR 26)
+  void _onSingleTap(Map<String, String> doc) {
+    _openDoc(doc);
   }
 
-  // Double tap → open in AudioPlayerScreen
+  // Double tap on document card → open saved document or resume reading (FR 26)
   void _onDoubleTap(Map<String, String> doc) {
+    _openDoc(doc);
+  }
+
+  void _openDoc(Map<String, String> doc) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder:
             (_) => AudioPlayerScreen(
+              documentId: doc['id'],
               translatedText: doc['text'],
               documentTitle: doc['title'],
             ),
@@ -55,13 +64,15 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
     );
   }
 
-  // Swipe left → delete
+  // Swipe left → delete saved document (FR 26)
   void _onDeleteDoc(int index) {
-    setState(() => _documents.removeAt(index));
+    final deleted = _documents.removeAt(index);
+    setState(() {});
+    TtsService.instance.speakEnglish('Document deleted');
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Document deleted'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text('"${deleted['title']}" deleted'),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -184,7 +195,7 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
                             ),
                             onDismissed: (_) => _onDeleteDoc(index),
                             child: GestureDetector(
-                              onTap: () => _onSingleTap(doc['title']!),
+                              onTap: () => _onSingleTap(doc),
                               onDoubleTap: () => _onDoubleTap(doc),
                               child: Container(
                                 margin: const EdgeInsets.only(bottom: 18),

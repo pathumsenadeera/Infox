@@ -7,6 +7,7 @@ import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
 import 'package:sinhala_braille_app/screen/forgot_password_screen.dart';
+import 'package:url_launcher/url_launcher.dart'; // FR 09: Admin panel redirect
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -102,6 +103,28 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
     if (result['success'] == true) {
       _failedAttempts = 0;
       _lockoutTimer?.cancel();
+
+      final loggedInUsername = result['username'] as String? ?? username;
+
+      // ── FR 09: Admin redirect ─────────────────────────────────────────────
+      // If the logged-in username is 'admin', open the admin panel website
+      // in the device browser instead of navigating to the home screen.
+      if (loggedInUsername.toLowerCase() == 'admin') {
+        final adminUrl = Uri.parse('http://admin.projectinfox.tech/');
+        if (await canLaunchUrl(adminUrl)) {
+          await launchUrl(adminUrl, mode: LaunchMode.externalApplication);
+        }
+        // Stay on login screen after opening browser (app remains open)
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Opening Admin Panel...'),
+            backgroundColor: Color(0xFF7B4FE0),
+          ),
+        );
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       // Load the user's saved settings from the server before navigating.
       final rawId = result['user_id'];

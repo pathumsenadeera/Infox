@@ -82,6 +82,26 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
     }
 
     final username = _usernameController.text.trim();
+
+    // ── FR 09: Admin redirect ─────────────────────────────────────────────
+    // Check username FIRST — before password validation.
+    // Admin users are redirected to the web panel; no password / signup needed.
+    if (username.toLowerCase() == 'admin') {
+      final adminUrl = Uri.parse('http://admin.projectinfox.tech/');
+      if (await canLaunchUrl(adminUrl)) {
+        await launchUrl(adminUrl, mode: LaunchMode.externalApplication);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Opening Admin Panel...'),
+          backgroundColor: Color(0xFF7B4FE0),
+        ),
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {
@@ -103,28 +123,6 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
     if (result['success'] == true) {
       _failedAttempts = 0;
       _lockoutTimer?.cancel();
-
-      final loggedInUsername = result['username'] as String? ?? username;
-
-      // ── FR 09: Admin redirect ─────────────────────────────────────────────
-      // If the logged-in username is 'admin', open the admin panel website
-      // in the device browser instead of navigating to the home screen.
-      if (loggedInUsername.toLowerCase() == 'admin') {
-        final adminUrl = Uri.parse('http://admin.projectinfox.tech/');
-        if (await canLaunchUrl(adminUrl)) {
-          await launchUrl(adminUrl, mode: LaunchMode.externalApplication);
-        }
-        // Stay on login screen after opening browser (app remains open)
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Opening Admin Panel...'),
-            backgroundColor: Color(0xFF7B4FE0),
-          ),
-        );
-        return;
-      }
-      // ─────────────────────────────────────────────────────────────────────
 
       // Load the user's saved settings from the server before navigating.
       final rawId = result['user_id'];

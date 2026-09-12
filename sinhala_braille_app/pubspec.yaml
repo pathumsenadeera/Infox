@@ -43,6 +43,7 @@ dependencies:
   speech_to_text: ^7.4.0
   http: ^1.6.0
   path_provider: ^2.1.5   # Needed for external storage path fallback
+  url_launcher: ^6.3.1    # FR 09: Open admin panel URL in browser
 
 dev_dependencies:
   flutter_test:

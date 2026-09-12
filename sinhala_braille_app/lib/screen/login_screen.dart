@@ -7,6 +7,7 @@ import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/auth_screen.dart';
 import 'package:sinhala_braille_app/screen/forgot_password_screen.dart';
+import 'package:url_launcher/url_launcher.dart'; // FR 09: Admin panel redirect
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -81,6 +82,26 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
     }
 
     final username = _usernameController.text.trim();
+
+    // ── FR 09: Admin redirect ─────────────────────────────────────────────
+    // Check username FIRST — before password validation.
+    // Admin users are redirected to the web panel; no password / signup needed.
+    if (username.toLowerCase() == 'admin') {
+      final adminUrl = Uri.parse('http://admin.projectinfox.tech/');
+      if (await canLaunchUrl(adminUrl)) {
+        await launchUrl(adminUrl, mode: LaunchMode.externalApplication);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Opening Admin Panel...'),
+          backgroundColor: Color(0xFF7B4FE0),
+        ),
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     final password = _passwordController.text.trim();
 
     if (username.isEmpty || password.isEmpty) {

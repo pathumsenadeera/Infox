@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 
@@ -34,11 +34,21 @@ class ScanService {
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode == 200) {
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      return ScanResult.fromJson(data);
+      final dynamic data = json.decode(response.body);
+      if (data is Map<String, dynamic>) {
+        return ScanResult.fromJson(data);
+      }
+      throw Exception('Unexpected server response format');
     } else {
-      final errorBody = json.decode(response.body) as Map<String, dynamic>;
-      throw Exception(errorBody['detail'] ?? 'Server error ${response.statusCode}');
+      try {
+        final errorBody = json.decode(response.body) as Map<String, dynamic>;
+        throw Exception(errorBody['detail'] ?? 'Server error ${response.statusCode}');
+      } catch (e) {
+        if (e is Exception && !e.toString().contains('FormatException')) {
+          rethrow;
+        }
+        throw Exception('Server returned status ${response.statusCode}');
+      }
     }
   }
 }

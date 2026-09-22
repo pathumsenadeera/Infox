@@ -50,6 +50,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   bool _isUploading = false;
   String _uploadStatus = '';
 
+  /// True for 6 s after a capture/upload error to prevent the accelerometer
+  /// from immediately re-triggering alignment and causing a capture loop.
+  bool _errorCooldown = false;
+
   // ── EMA (Exponential Moving Average) – simulated Kalman smoothing ────────
   // Alpha close to 1 = fast response; close to 0 = heavy smoothing.
   // 0.12 gives slightly more smoothing to filter micro-jitter.
@@ -195,7 +199,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    if (aligned && !_isAligned && !_isCapturing) {
+    if (aligned && !_isAligned && !_isCapturing && !_errorCooldown) {
       setState(() => _isAligned = true);
       _startHoldWindow();
     } else if (!aligned && _isAligned) {
@@ -252,7 +256,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       } catch (_) {
         // Fallback to app-specific external dir on permission failure
         final externalDir = await getExternalStorageDirectory();
-        scansDir = Directory('${externalDir!.path}/BrailleScans');
+        if (externalDir == null) throw Exception('No external storage available');
+        scansDir = Directory('${externalDir.path}/BrailleScans');
         if (!await scansDir.exists()) await scansDir.create(recursive: true);
       }
 
@@ -327,8 +332,23 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
           _uploadStatus = '';
           _isAligned = false;
           _holdProgress = 0.0;
+          // Block new captures for 6 s so the accelerometer can't immediately
+          // re-trigger alignment and cause a capture → fail → capture loop.
+          _errorCooldown = true;
         });
         _cancelHoldWindow();
+
+        // Clear the cooldown after 6 s (async, safe if widget is disposed).
+        Future.delayed(const Duration(seconds: 6), () {
+          if (mounted) setState(() => _errorCooldown = false);
+        });
+
+        // Capture context-dependent objects NOW, before the await below.
+        // SnackBarAction.onPressed fires asynchronously (when user taps the
+        // button), so `context` may be stale/unmounted by then, causing the
+        // "widget has been unmounted" crash seen in the logs.
+        final scaffoldMessenger = ScaffoldMessenger.of(context);
+        final navigator = Navigator.of(context);
 
         await TtsService.instance.announceError(
           wasUploading
@@ -337,28 +357,28 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
           errorCode: wasUploading ? 'ERR_UPLOAD' : 'ERR_CAPTURE',
         );
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Processing failed: ${e.toString().replaceAll("Exception: ", "")}',
-              ),
-              duration: const Duration(seconds: 6),
-              action: SnackBarAction(
-                label: 'Offline View',
-                textColor: Colors.greenAccent,
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AudioPlayerScreen(),
-                    ),
-                  );
-                },
-              ),
+        // Dismiss any snackbar that is already visible/queued before showing
+        // the new error — prevents stale messages getting stuck on screen.
+        scaffoldMessenger.clearSnackBars();
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Processing failed: ${e.toString().replaceAll("Exception: ", "")}',
             ),
-          );
-        }
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'Offline View',
+              textColor: Colors.greenAccent,
+              onPressed: () {
+                navigator.pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => const AudioPlayerScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
       }
     }
   }
@@ -366,11 +386,17 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   /// Aborts active scan, clears buffers, announces "Scan cancelled" and redirects to Home (FR 32).
   Future<void> _onCancelScan() async {
     _cancelHoldWindow();
-    _isCapturing = false;
-    _isUploading = false;
-    _uploadStatus = '';
-    _holdProgress = 0.0;
-    _isAligned = false;
+    // Wrap all state mutations in setState so the UI reflects the cancellation
+    // immediately (previously these were bare assignments with no rebuild).
+    if (mounted) {
+      setState(() {
+        _isCapturing = false;
+        _isUploading = false;
+        _uploadStatus = '';
+        _holdProgress = 0.0;
+        _isAligned = false;
+      });
+    }
     await TtsService.instance.speakEnglish('Scan cancelled');
     if (mounted) {
       Navigator.pushReplacement(

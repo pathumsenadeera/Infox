@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:sinhala_braille_app/screen/auth_screen.dart';
 import 'package:sinhala_braille_app/screen/live_camera_screen.dart';
 import 'package:sinhala_braille_app/screen/profile_screen.dart';
 import 'package:sinhala_braille_app/screen/saved_history_screen.dart';
@@ -31,10 +31,9 @@ class AssistiveReaderScreen extends StatelessWidget {
                 children: [
                   IconButton(
                     onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => AuthScreen()),
-                      );
+                      // This is the home screen — exit the app rather than
+                      // confusingly navigating back to the auth screen.
+                      SystemNavigator.pop();
                     },
                     icon: Icon(Icons.arrow_back_sharp, size: 30),
                     style: ButtonStyle(

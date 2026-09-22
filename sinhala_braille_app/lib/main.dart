@@ -20,9 +20,11 @@ Future<void> main() async {
     debugPrint("Error fetching cameras: $e");
   }
 
-  // Initialise TTS + STT service
-  //add loading screen or something because this takes 5-6 seconds to load.
-  await TtsService.instance.init();
+  // Start TTS + STT initialisation in the background.
+  // Removing the await means the app launches immediately instead of hanging
+  // for 5–6 s on the blank screen. TtsService guards all speak/listen calls
+  // via _isEngineReady so nothing breaks while init is still in progress.
+  TtsService.instance.init();
 
   runApp(
     AppSettings(

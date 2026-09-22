@@ -48,6 +48,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   Timer? _progressTimer;
   bool _isCapturing = false;
   bool _isUploading = false;
+  String _uploadStatus = '';
 
   // ── EMA (Exponential Moving Average) – simulated Kalman smoothing ────────
   // Alpha close to 1 = fast response; close to 0 = heavy smoothing.
@@ -127,7 +128,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     // Listen to raw accelerometer and apply EMA smoothing
     _accelerometerSubscription =
         accelerometerEventStream().listen((AccelerometerEvent event) {
-      if (!mounted) return;
+      if (!mounted || _isCapturing) return;
 
       // Apply EMA filter on each axis
       _smoothX = _alpha * event.x + (1 - _alpha) * _smoothX;
@@ -240,6 +241,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     try {
       // Take the full-resolution JPEG photo
       final XFile photo = await _cameraController!.takePicture();
+      // Pause preview to give user feedback that capture is complete
+      await _cameraController?.pausePreview();
       debugPrint('Photo captured: ${photo.path}');
 
       // Save to public Downloads folder — visible in Files app immediately
@@ -267,7 +270,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       );
 
       // ── FR 17: Upload Braille scan to backend for AI translation ─────────
-      setState(() => _isUploading = true);
+      setState(() {
+        _isUploading = true;
+        _uploadStatus = 'uploading';
+      });
       await TtsService.instance.speakEnglish(
         'Photo captured. Uploading and translating Braille image.',
       );
@@ -280,6 +286,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       final result = await ScanService.uploadBrailleImage(
         imageFile: File(savePath),
         userId: userId,
+        onStatusUpdate: (status) {
+          if (mounted) {
+            setState(() {
+              _uploadStatus = status;
+            });
+          }
+        },
       );
 
       if (!mounted) return;
@@ -301,12 +314,17 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       return;
     } catch (e) {
       debugPrint('Capture or upload error: $e');
+      try {
+        await _cameraController?.resumePreview();
+      } catch (_) {}
+
       if (mounted) {
         final wasUploading = _isUploading;
         // Reset ALL capture-related state so the hold-window can restart cleanly.
         setState(() {
           _isCapturing = false;
           _isUploading = false;
+          _uploadStatus = '';
           _isAligned = false;
           _holdProgress = 0.0;
         });
@@ -350,6 +368,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     _cancelHoldWindow();
     _isCapturing = false;
     _isUploading = false;
+    _uploadStatus = '';
     _holdProgress = 0.0;
     _isAligned = false;
     await TtsService.instance.speakEnglish('Scan cancelled');
@@ -498,12 +517,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const CircularProgressIndicator(
-                                          color: Colors.greenAccent),
+                                      if (_uploadStatus != 'error')
+                                        const CircularProgressIndicator(
+                                            color: Colors.greenAccent),
                                       const SizedBox(height: 16),
                                       Text(
                                         _isUploading
-                                            ? 'TRANSLATING BRAILLE WITH AI...'
+                                            ? 'STATUS: ${_uploadStatus.toUpperCase()}'
                                             : 'SAVING IMAGE...',
                                         textAlign: TextAlign.center,
                                         style: GoogleFonts.poppins(
@@ -554,7 +574,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                 child: Text(
                   _isCapturing
                       ? (_isUploading
-                          ? 'TRANSLATING VIA SERVER...'
+                          ? 'STATUS: ${_uploadStatus.toUpperCase()}'
                           : 'CAPTURING IMAGE...')
                       : _isAligned
                           ? 'AUTO-CAPTURE IN PROGRESS'

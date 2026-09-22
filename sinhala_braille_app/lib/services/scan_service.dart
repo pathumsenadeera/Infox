@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 
@@ -18,6 +18,7 @@ class ScanService {
   static Future<ScanResult> uploadBrailleImage({
     required File imageFile,
     required int userId,
+    void Function(String)? onStatusUpdate,
   }) async {
     final uri = Uri.parse('$_baseUrl/scan');
 
@@ -27,18 +28,58 @@ class ScanService {
         await http.MultipartFile.fromPath('image', imageFile.path),
       );
 
-    // 90s timeout - model inference on the server can take time
+    // Initial request timeout can be shorter since processing is async
     final streamedResponse = await request
         .send()
-        .timeout(const Duration(seconds: 90));
+        .timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode == 200) {
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      return ScanResult.fromJson(data);
+      final dynamic data = json.decode(response.body);
+      if (data is Map<String, dynamic> && data.containsKey('scan_id')) {
+        final int scanId = data['scan_id'];
+        return _pollScanStatus(scanId, onStatusUpdate);
+      }
+      throw Exception('Unexpected server response format');
     } else {
-      final errorBody = json.decode(response.body) as Map<String, dynamic>;
-      throw Exception(errorBody['detail'] ?? 'Server error ${response.statusCode}');
+      try {
+        final errorBody = json.decode(response.body) as Map<String, dynamic>;
+        throw Exception(errorBody['detail'] ?? 'Server error ${response.statusCode}');
+      } catch (e) {
+        if (e is Exception && !e.toString().contains('FormatException')) {
+          rethrow;
+        }
+        throw Exception('Server returned status ${response.statusCode}');
+      }
+    }
+  }
+
+  /// Polls the server until the scan is complete.
+  static Future<ScanResult> _pollScanStatus(int scanId, void Function(String)? onStatusUpdate) async {
+    final uri = Uri.parse('$_baseUrl/scan/$scanId');
+    
+    // Poll every 3 seconds
+    while (true) {
+      if (onStatusUpdate != null) onStatusUpdate('pending');
+      await Future.delayed(const Duration(seconds: 3));
+      
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        final status = data['status'];
+        
+        if (onStatusUpdate != null) onStatusUpdate(status);
+        
+        if (status == 'done') {
+          return ScanResult.fromJson(data);
+        } else if (status == 'error') {
+          throw Exception(data['error_message'] ?? 'Translation failed on server.');
+        }
+        // If status == 'pending', continue polling
+      } else {
+        throw Exception('Server returned status ${response.statusCode} while polling');
+      }
     }
   }
 }

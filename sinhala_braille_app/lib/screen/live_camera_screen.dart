@@ -10,8 +10,8 @@ import 'package:sinhala_braille_app/main.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/audio_player_screen.dart';
 import 'package:sinhala_braille_app/providers/tts_service.dart';
-// TODO: Uncomment when backend /scan endpoint is ready
-// import 'package:sinhala_braille_app/services/scan_service.dart';
+import 'package:sinhala_braille_app/providers/user_provider.dart';
+import 'package:sinhala_braille_app/services/scan_service.dart';
 
 class LiveCameraScreen extends StatefulWidget {
   const LiveCameraScreen({super.key});
@@ -47,6 +47,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   double _holdProgress = 0.0;
   Timer? _progressTimer;
   bool _isCapturing = false;
+  bool _isUploading = false;
+  String _uploadStatus = '';
 
   // ── EMA (Exponential Moving Average) – simulated Kalman smoothing ────────
   // Alpha close to 1 = fast response; close to 0 = heavy smoothing.
@@ -126,7 +128,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     // Listen to raw accelerometer and apply EMA smoothing
     _accelerometerSubscription =
         accelerometerEventStream().listen((AccelerometerEvent event) {
-      if (!mounted) return;
+      if (!mounted || _isCapturing) return;
 
       // Apply EMA filter on each axis
       _smoothX = _alpha * event.x + (1 - _alpha) * _smoothX;
@@ -239,6 +241,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     try {
       // Take the full-resolution JPEG photo
       final XFile photo = await _cameraController!.takePicture();
+      // Pause preview to give user feedback that capture is complete
+      await _cameraController?.pausePreview();
       debugPrint('Photo captured: ${photo.path}');
 
       // Save to public Downloads folder — visible in Files app immediately
@@ -265,48 +269,96 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
         const SnackBar(content: Text('Image saved to Downloads/BrailleScans')),
       );
 
-      // ── TODO: Backend upload ─────────────────────────────────────────────
-      // When the backend /scan endpoint is ready:
-      //
-      // 1. Uncomment the scan_service.dart import at the top of this file.
-      // 2. Uncomment the block below.
-      //
-      // final user = UserProvider.of(context);
-      // final result = await ScanService.uploadBrailleImage(
-      //   imageFile: File(savePath),
-      //   userId: int.parse(user.userId ?? '0'),
-      // );
-      // if (!mounted) return;
-      // Navigator.pushReplacement(context, MaterialPageRoute(
-      //   builder: (_) => AudioPlayerScreen(translatedText: result.translatedText),
-      // ));
-      // return;
-      // ─────────────────────────────────────────────────────────────────────────
+      // ── FR 17: Upload Braille scan to backend for AI translation ─────────
+      setState(() {
+        _isUploading = true;
+        _uploadStatus = 'uploading';
+      });
+      await TtsService.instance.speakEnglish(
+        'Photo captured. Uploading and translating Braille image.',
+      );
 
-      // Temporary: navigate without translated text until backend is live
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AudioPlayerScreen()),
-        );
-      }
+      if (!mounted) return;
+
+      final user = UserProvider.of(context);
+      final userId = int.tryParse(user.userId ?? '0') ?? 0;
+
+      final result = await ScanService.uploadBrailleImage(
+        imageFile: File(savePath),
+        userId: userId,
+        onStatusUpdate: (status) {
+          if (mounted) {
+            setState(() {
+              _uploadStatus = status;
+            });
+          }
+        },
+      );
+
+      if (!mounted) return;
+
+      await TtsService.instance.speakEnglish('Translation complete.');
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AudioPlayerScreen(
+            translatedText: result.translatedText,
+            documentId: result.docId?.toString(),
+            documentTitle:
+                'Scan ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
+          ),
+        ),
+      );
+      return;
     } catch (e) {
-      debugPrint('Capture error: $e');
+      debugPrint('Capture or upload error: $e');
+      try {
+        await _cameraController?.resumePreview();
+      } catch (_) {}
+
       if (mounted) {
+        final wasUploading = _isUploading;
         // Reset ALL capture-related state so the hold-window can restart cleanly.
         setState(() {
           _isCapturing = false;
+          _isUploading = false;
+          _uploadStatus = '';
           _isAligned = false;
           _holdProgress = 0.0;
         });
         _cancelHoldWindow();
-        TtsService.instance.announceError(
-          'Image capture failed. Please hold device steady and try again.',
-          errorCode: 'ERR_CAPTURE',
+
+        await TtsService.instance.announceError(
+          wasUploading
+              ? 'Translation upload failed. Please check your network connection.'
+              : 'Image capture failed. Please hold device steady and try again.',
+          errorCode: wasUploading ? 'ERR_UPLOAD' : 'ERR_CAPTURE',
         );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Capture failed: $e')),
-        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Processing failed: ${e.toString().replaceAll("Exception: ", "")}',
+              ),
+              duration: const Duration(seconds: 6),
+              action: SnackBarAction(
+                label: 'Offline View',
+                textColor: Colors.greenAccent,
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AudioPlayerScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        }
       }
     }
   }
@@ -315,6 +367,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   Future<void> _onCancelScan() async {
     _cancelHoldWindow();
     _isCapturing = false;
+    _isUploading = false;
+    _uploadStatus = '';
     _holdProgress = 0.0;
     _isAligned = false;
     await TtsService.instance.speakEnglish('Scan cancelled');
@@ -463,11 +517,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const CircularProgressIndicator(
-                                          color: Colors.greenAccent),
+                                      if (_uploadStatus != 'error')
+                                        const CircularProgressIndicator(
+                                            color: Colors.greenAccent),
                                       const SizedBox(height: 16),
                                       Text(
-                                        'SAVING...',
+                                        _isUploading
+                                            ? 'STATUS: ${_uploadStatus.toUpperCase()}'
+                                            : 'SAVING IMAGE...',
+                                        textAlign: TextAlign.center,
                                         style: GoogleFonts.poppins(
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
@@ -515,7 +573,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                 alignment: Alignment.center,
                 child: Text(
                   _isCapturing
-                      ? 'CAPTURING IMAGE...'
+                      ? (_isUploading
+                          ? 'STATUS: ${_uploadStatus.toUpperCase()}'
+                          : 'CAPTURING IMAGE...')
                       : _isAligned
                           ? 'AUTO-CAPTURE IN PROGRESS'
                           : 'AUTO-CAPTURE IS ACTIVE',

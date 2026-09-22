@@ -12,7 +12,9 @@ class SavedHistoryScreen extends StatefulWidget {
 }
 
 class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
-  // Mock local document store with IDs (FR 26 & FR 27)
+  // TODO(backend): Replace this hardcoded mock list with a real API call
+  // (e.g. GET /documents?user_id=X) once the saved-history endpoint is ready.
+  // Documents scanned and saved by the user should appear here automatically.
   final List<Map<String, String>> _documents = [
     {
       'id': 'doc_001',
@@ -40,12 +42,12 @@ class _SavedHistoryScreenState extends State<SavedHistoryScreen> {
     },
   ];
 
-  // Single tap on document card → open saved document (FR 26)
+  // Single tap → speak the document title aloud (FR 26, matches bottom instruction bar)
   void _onSingleTap(Map<String, String> doc) {
-    _openDoc(doc);
+    TtsService.instance.speakEnglish(doc['title'] ?? 'Untitled document');
   }
 
-  // Double tap on document card → open saved document or resume reading (FR 26)
+  // Double tap → open saved document / resume reading (FR 26)
   void _onDoubleTap(Map<String, String> doc) {
     _openDoc(doc);
   }

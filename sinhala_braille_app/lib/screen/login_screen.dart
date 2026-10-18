@@ -102,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
     }
     // ─────────────────────────────────────────────────────────────────────
 
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
 
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

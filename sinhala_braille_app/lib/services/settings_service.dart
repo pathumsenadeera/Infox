@@ -1,21 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:sinhala_braille_app/services/auth_service.dart';
+import 'package:sinhala_braille_app/services/session_service.dart';
 
 class SettingsService {
-  static const String _baseUrl = AuthService.baseUrl;
-
   /// Fetches settings for [userId] from the backend.
   /// Returns the settings map on success, or null on failure.
   static Future<Map<String, dynamic>?> getSettings(int userId) async {
     try {
-      final response = await http
-          .get(
-            Uri.parse('$_baseUrl/settings/$userId'),
-            headers: {"Content-Type": "application/json"},
-          )
-          .timeout(const Duration(seconds: 15));
+      final response = await SessionService.instance.request(
+        'GET',
+        '/settings/$userId',
+      );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -37,18 +32,16 @@ class SettingsService {
     required bool hapticVibration,
   }) async {
     try {
-      final response = await http
-          .put(
-            Uri.parse('$_baseUrl/settings/'),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "user_id": userId,
-              "speech_rate": speechRate,
-              "voice_type": voiceType,
-              "haptic_vibration": hapticVibration,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
+      final response = await SessionService.instance.request(
+        'PUT',
+        '/settings/',
+        body: {
+          'user_id': userId,
+          'speech_rate': speechRate,
+          'voice_type': voiceType,
+          'haptic_vibration': hapticVibration,
+        },
+      );
 
       return response.statusCode == 200;
     } on TimeoutException {

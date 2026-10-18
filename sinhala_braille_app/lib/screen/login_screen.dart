@@ -24,12 +24,22 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
   bool _isLoading = false;
 
   // ── Lockout state machine ───────────────────────────────────────────────
-  int _failedAttempts = 0;
-  static const int _maxAttempts = 5;
-  static const Duration _lockoutDuration = Duration(minutes: 15);
-  DateTime? _lockoutUntil;
+  // Display server-confirmed locks only. The backend enforces them after restart.
+  final Map<String, DateTime> _locks = {};
+  String get _usernameKey => _usernameController.text.trim().toLowerCase();
+  DateTime? get _lockoutUntil => _locks[_usernameKey];
   Timer? _lockoutTimer;
   int _lockoutSecondsRemaining = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _usernameController.addListener(_onUsernameChanged);
+  }
+
+  void _onUsernameChanged() {
+    _startLockoutCountdown();
+  }
 
   bool get _isLockedOut {
     if (_lockoutUntil == null) return false;
@@ -38,19 +48,26 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
 
   void _startLockoutCountdown() {
     _lockoutTimer?.cancel();
-    _lockoutSecondsRemaining =
-        _lockoutUntil!.difference(DateTime.now()).inSeconds;
+    final until = _lockoutUntil;
+    if (until == null || !DateTime.now().isBefore(until)) {
+      setState(() => _lockoutSecondsRemaining = 0);
+      return;
+    }
+    setState(() {
+      _lockoutSecondsRemaining =
+          (until.difference(DateTime.now()).inMilliseconds / 1000).ceil();
+    });
     _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) {
         t.cancel();
         return;
       }
-      final remaining = _lockoutUntil!.difference(DateTime.now()).inSeconds;
+      final remaining =
+          (until.difference(DateTime.now()).inMilliseconds / 1000).ceil();
       if (remaining <= 0) {
         t.cancel();
         setState(() {
-          _lockoutUntil = null;
-          _failedAttempts = 0;
+          _locks.remove(_usernameKey);
           _lockoutSecondsRemaining = 0;
         });
       } else {
@@ -67,6 +84,7 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
   // ────────────────────────────────────────────────────────────────────────
 
   void _onLogin() async {
+    if (_isLoading) return;
     // Check lockout first
     if (_isLockedOut) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -121,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
 
     // 3. handle success
     if (result['success'] == true) {
-      _failedAttempts = 0;
+      _locks.remove(username.toLowerCase());
       _lockoutTimer?.cancel();
 
       // Load the user's saved settings from the server before navigating.
@@ -139,39 +157,18 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
     }
     // 4. handle failure and lockout
     else {
-      _failedAttempts++;
-      final remaining = _maxAttempts - _failedAttempts;
-
-      if (_failedAttempts >= _maxAttempts) {
-        //Trigger Lockout
-        setState(() {
-          _lockoutUntil = DateTime.now().add(_lockoutDuration);
-        });
+      final retryAfter = result['retry_after_seconds'];
+      if (result['status_code'] == 429 && retryAfter is int && retryAfter > 0) {
+        _locks[username.toLowerCase()] = DateTime.now().add(
+          Duration(seconds: retryAfter),
+        );
         _startLockoutCountdown();
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Too many failed attempts. Account locked for 15 minutes.',
-            ),
-            backgroundColor: Colors.red[800],
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else {
-        final message =
-            result['message'] as String? ?? 'Invalid username or password.';
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '$message ($remaining attempt${remaining == 1 ? '' : 's'} remaining)',
-            ),
-            backgroundColor: Colors.orange[700],
-          ),
-        );
       }
+      final message =
+          result['message'] as String? ?? 'Invalid username or password.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.orange[700]),
+      );
     }
   }
 
@@ -285,7 +282,7 @@ class _LoginScreenState extends State<LoginScreen> with TtsInputMixin {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Account locked for 15 minutes.\nTime remaining: ${_formatLockoutTime()}',
+                                'Account temporarily locked.\nTime remaining: ${_formatLockoutTime()}',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,

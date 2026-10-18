@@ -1,166 +1,114 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:sinhala_braille_app/services/session_service.dart';
 
 class AuthService {
-  // Replace with your actual Azure VM IP address
-  static const String baseUrl = "https://server.projectinfox.tech";
+  static const baseUrl = SessionService.baseUrl;
+  static SessionService get _session => SessionService.instance;
 
-  // ── Auth ─────────────────────────────────────────────────────────────────
+  static Future<Map<String, dynamic>> _perform(
+    Future<http.Response> Function() action,
+  ) async {
+    try {
+      final response = await action();
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {...data, 'success': true};
+      }
+      return {
+        'success': false,
+        'status_code': response.statusCode,
+        'message':
+            data['detail'] is String
+                ? data['detail']
+                : 'Please check your input.',
+      };
+    } on SessionExpired {
+      return {
+        'success': false,
+        'message': 'Session expired. Please log in again.',
+      };
+    } on TimeoutException {
+      return {
+        'success': false,
+        'message': 'Connection timed out. Please try again.',
+      };
+    } catch (_) {
+      return {
+        'success': false,
+        'message': 'Could not connect to the server. Please try again.',
+      };
+    }
+  }
 
   static Future<Map<String, dynamic>> signup(
     String username,
     String email,
     String password,
-  ) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/signup'),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "username": username,
-              "email": email,
-              "password": password,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 201) {
-        return {"success": true, "message": "Registered successfully"};
-      } else {
-        final errorData = jsonDecode(response.body);
-        return {"success": false, "message": errorData['detail']};
-      }
-    } on TimeoutException {
-      return {
-        "success": false,
-        "message": "Connection timed out. Please try again.",
-      };
-    } catch (e) {
-      return {
-        "success": false,
-        "message": "Network error: Could not connect to server",
-      };
-    }
-  }
+  ) => _perform(
+    () => _session.publicRequest(
+      'POST',
+      '/signup',
+      body: {'username': username, 'email': email, 'password': password},
+    ),
+  );
 
   static Future<Map<String, dynamic>> login(
     String username,
     String password,
   ) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/login'),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"username": username, "password": password}),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+    final result = await _perform(
+      () => _session.publicRequest(
+        'POST',
+        '/login',
+        body: {'username': username, 'password': password},
+      ),
+    );
+    if (result['success'] == true) {
+      try {
+        await _session.acceptLogin(result);
+      } on PlatformException {
         return {
-          "success": true,
-          "user_id": data['user_id'],
-          "username": data['username'],
-          "email": data['email'],
+          'success': false,
+          'message': 'Could not securely store your session. Please try again.',
         };
-      } else {
-        return {"success": false, "message": "Invalid username or password"};
+      } catch (_) {
+        return {
+          'success': false,
+          'message':
+              'The server returned an invalid session. Please update the backend.',
+        };
       }
-    } on TimeoutException {
-      return {
-        "success": false,
-        "message": "Connection timed out. Please try again.",
-      };
-    } catch (e) {
-      return {
-        "success": false,
-        "message": "Network error: Could not connect to server",
-      };
     }
+    return result;
   }
 
-  // ── Profile ──────────────────────────────────────────────────────────────
-
-  /// Updates the username for [userId] on the server.
   static Future<Map<String, dynamic>> updateUsername(
     String userId,
     String newUsername,
-  ) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/update-username'),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "user_id": int.parse(userId),
-              "new_username": newUsername,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
+  ) => _perform(
+    () => _session.request(
+      'PUT',
+      '/update-username',
+      body: {'user_id': int.parse(userId), 'new_username': newUsername},
+    ),
+  );
 
-      if (response.statusCode == 200) {
-        return {"success": true, "message": "Username updated successfully"};
-      } else {
-        final errorData = jsonDecode(response.body);
-        return {
-          "success": false,
-          "message": errorData['detail'] ?? "Failed to update username",
-        };
-      }
-    } on TimeoutException {
-      return {
-        "success": false,
-        "message": "Connection timed out. Please try again.",
-      };
-    } catch (e) {
-      return {
-        "success": false,
-        "message": "Network error: Could not connect to server",
-      };
-    }
-  }
-
-  /// Changes the password for [userId] after verifying [currentPassword].
   static Future<Map<String, dynamic>> changePassword(
     String userId,
     String currentPassword,
     String newPassword,
-  ) async {
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/change-password'),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "user_id": int.parse(userId),
-              "current_password": currentPassword,
-              "new_password": newPassword,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        return {"success": true, "message": "Password changed successfully"};
-      } else {
-        final errorData = jsonDecode(response.body);
-        return {
-          "success": false,
-          "message": errorData['detail'] ?? "Failed to change password",
-        };
-      }
-    } on TimeoutException {
-      return {
-        "success": false,
-        "message": "Connection timed out. Please try again.",
-      };
-    } catch (e) {
-      return {
-        "success": false,
-        "message": "Network error: Could not connect to server",
-      };
-    }
-  }
+  ) => _perform(
+    () => _session.request(
+      'PUT',
+      '/change-password',
+      body: {
+        'user_id': int.parse(userId),
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      },
+    ),
+  );
 }

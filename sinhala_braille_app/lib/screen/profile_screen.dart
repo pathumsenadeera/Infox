@@ -4,7 +4,6 @@ import 'package:sinhala_braille_app/providers/user_provider.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/change_password_screen.dart';
 import 'package:sinhala_braille_app/screen/edit_profile_screen.dart';
-import 'welcome_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -290,17 +289,19 @@ class ProfileScreen extends StatelessWidget {
                                 ),
                               ),
                               onPressed: () async {
-                                // Clear saved session so next app launch
-                                // shows the Welcome screen, not auto-login.
-                                await UserProvider.of(context).logout();
-                                if (!context.mounted) return;
-                                Navigator.pushAndRemoveUntil(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const WelcomeScreen(),
-                                  ),
-                                  (route) => false,
-                                );
+                                try {
+                                  await UserProvider.of(context).logout();
+                                  // The global session listener clears protected routes.
+                                } catch (_) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Could not log out. Check your connection and try again.',
+                                      ),
+                                    ),
+                                  );
+                                }
                               },
                               child: Text(
                                 'LOG OUT',

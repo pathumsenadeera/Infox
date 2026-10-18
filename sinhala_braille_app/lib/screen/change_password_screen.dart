@@ -11,7 +11,8 @@ class ChangePasswordScreen extends StatefulWidget {
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInputMixin {
+class _ChangePasswordScreenState extends State<ChangePasswordScreen>
+    with TtsInputMixin {
   final TextEditingController _currentPasswordController =
       TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
@@ -40,15 +41,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInp
       return;
     }
 
-    // Verify current password matches locally cached password
-    final cachedPassword = UserProvider.of(context).password;
-    if (_currentPasswordController.text != cachedPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Current password is incorrect!')),
-      );
-      return;
-    }
-
     // Confirm new passwords match before hitting the server
     if (_newPasswordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(
@@ -69,17 +61,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInp
 
     if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password Changed Successfully!')),
+        const SnackBar(content: Text('Password changed. Please log in again.')),
       );
-      Navigator.pop(context);
+      // The global session listener returns the user to Login.
     } else {
       final message =
           result['message'] as String? ?? 'Failed to change password.';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red[700],
-        ),
+        SnackBar(content: Text(message), backgroundColor: Colors.red[700]),
       );
     }
   }
@@ -236,30 +225,32 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> with TtsInp
                       height: 70,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _isLoading
-                              ? Colors.grey
-                              : const Color(0xFF7B4FE0),
+                          backgroundColor:
+                              _isLoading
+                                  ? Colors.grey
+                                  : const Color(0xFF7B4FE0),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
                         onPressed: _isLoading ? null : _onSavePassword,
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 3,
-                              )
-                            : Text(
-                                'SAVE\nPASSWORD',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
+                        child:
+                            _isLoading
+                                ? const CircularProgressIndicator(
                                   color: Colors.white,
-                                  height: 1.1,
+                                  strokeWidth: 3,
+                                )
+                                : Text(
+                                  'SAVE\nPASSWORD',
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                    height: 1.1,
+                                  ),
                                 ),
-                              ),
                       ),
                     ),
                   ],

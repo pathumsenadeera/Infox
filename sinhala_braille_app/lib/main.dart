@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sinhala_braille_app/screen/login_screen.dart';
 import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
 import 'package:sinhala_braille_app/providers/tts_service.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
@@ -42,52 +42,70 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  /// Cached Future — created once in initState so it never re-fires
-  /// when Flutter rebuilds MyApp (e.g. when returning from recent apps).
-  late final Future<String?> _loginCheckFuture;
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  UserNotifier? _user;
+  Future<void>? _initialization;
+  String? _previousUserId;
 
   @override
-  void initState() {
-    super.initState();
-    _loginCheckFuture = _getLoggedInUserId();
-
-    // Load settings exactly once after the login check resolves.
-    // Doing this here (not inside the FutureBuilder builder) prevents
-    // an infinite loop: builder → notifyListeners → rebuild → builder → ...
-    _loginCheckFuture.then((userId) {
-      if (userId == null || !mounted) return;
-      final parsedId = int.tryParse(userId);
-      if (parsedId == null) return;
-      // addPostFrameCallback ensures the InheritedWidget tree is ready.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) AppSettings.of(context).loadFromServer(parsedId);
-      });
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final user = UserProvider.of(context);
+    if (identical(user, _user)) return;
+    _user?.removeListener(_onSessionChanged);
+    _user = user;
+    _previousUserId = user.userId;
+    user.addListener(_onSessionChanged);
+    _initialization = _restore(user.ready);
   }
 
-  /// Reads SharedPreferences once to decide whether the user is already
-  /// logged in. Returns the user_id string if logged in, null otherwise.
-  static Future<String?> _getLoggedInUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('user_id');
-    if (userId != null && userId.isNotEmpty) return userId;
-    return null;
+  Future<void> _restore(Future<void> ready) async {
+    await ready;
+    if (!mounted || _user?.userId == null) return;
+    await AppSettings.of(context).loadFromServer(int.parse(_user!.userId!));
+  }
+
+  void _onSessionChanged() {
+    final wasSignedIn = _previousUserId != null;
+    _previousUserId = _user?.userId;
+    if (wasSignedIn && _previousUserId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _user!.isSignedIn) return;
+        TtsService.instance.stop();
+        _navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (_) => false,
+        );
+        _messengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('Please log in to continue.')),
+        );
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _user?.removeListener(_onSessionChanged);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'InfoX',
+      navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: _messengerKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7B4FE0)),
         textTheme: GoogleFonts.poppinsTextTheme(),
         useMaterial3: true,
       ),
-      home: FutureBuilder<String?>(
-        future: _loginCheckFuture,
+      home: FutureBuilder<void>(
+        future: _initialization,
         builder: (context, snapshot) {
-          // Show a splash while we read prefs (< 50 ms typically)
+          // Wait for secure storage and the initial server session check.
           if (snapshot.connectionState != ConnectionState.done) {
             return const Scaffold(
               backgroundColor: Color(0xFF0c031f),
@@ -97,8 +115,30 @@ class _MyAppState extends State<MyApp> {
             );
           }
 
-          final loggedIn = snapshot.data != null;
-          return loggedIn ? const AssistiveReaderScreen() : const WelcomeScreen();
+          if (snapshot.hasError) {
+            return Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Could not restore your secure session.'),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(
+                          () => _initialization = _restore(_user!.restore()),
+                        );
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          final loggedIn = _user!.isSignedIn;
+          return loggedIn
+              ? const AssistiveReaderScreen()
+              : const WelcomeScreen();
         },
       ),
     );

@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:sinhala_braille_app/providers/tts_service.dart';
+import 'package:sinhala_braille_app/utils/registration_validation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sinhala_braille_app/providers/tts_input_mixin.dart';
 import 'package:sinhala_braille_app/providers/user_provider.dart';
@@ -20,6 +23,12 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
       TextEditingController();
 
   bool _showPassword = false;
+  final _usernameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  final _confirmPasswordFocus = FocusNode();
+  Timer? _strengthAnnouncement;
+  String _lastAnnouncedStrength = '';
   bool _showConfirmPassword = false;
   bool _isLoading = false;
   double _passwordStrengthScore = 0.0;
@@ -33,8 +42,10 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
   }
 
   void _checkPasswordStrength() {
+    _strengthAnnouncement?.cancel();
     final pass = _passwordController.text;
     if (pass.isEmpty) {
+      _lastAnnouncedStrength = '';
       setState(() {
         _passwordStrengthScore = 0.0;
         _passwordStrengthLabel = '';
@@ -65,38 +76,60 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
         _passwordStrengthColor = Colors.green;
       }
     });
+    _strengthAnnouncement = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted ||
+          _isLoading ||
+          !_passwordFocus.hasFocus ||
+          _lastAnnouncedStrength == _passwordStrengthLabel) {
+        return;
+      }
+      _lastAnnouncedStrength = _passwordStrengthLabel;
+      unawaited(
+        TtsService.instance.speakEnglish(
+          'Password strength: $_passwordStrengthLabel',
+        ),
+      );
+    });
+  }
+
+  void _showValidationError(String message, [FocusNode? focus]) {
+    _strengthAnnouncement?.cancel();
+    focus?.requestFocus();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+    unawaited(TtsService.instance.announceError(message));
   }
 
   void _onSignUp() async {
+    if (_isLoading) return;
+    _strengthAnnouncement?.cancel();
     final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
-    if (username.isEmpty ||
-        email.isEmpty ||
-        password.isEmpty ||
-        confirmPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields.')),
-      );
-      return;
+    for (final field in [
+      (username, 'username', _usernameFocus),
+      (email, 'email', _emailFocus),
+      (password, 'password', _passwordFocus),
+      (confirmPassword, 'confirm password', _confirmPasswordFocus),
+    ]) {
+      if (field.$1.isEmpty) {
+        _showValidationError('Please enter your ${field.$2}.', field.$3);
+        return;
+      }
     }
 
     // Email validation
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid email address.')),
-      );
+    if (!isValidRegistrationEmail(email)) {
+      _showValidationError('Please enter a valid email address.', _emailFocus);
       return;
     }
 
     // Confirm password match check
     if (password != confirmPassword) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Passwords do not match!')));
+      _showValidationError('Passwords do not match.', _confirmPasswordFocus);
       return;
     }
 
@@ -112,7 +145,9 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
 
     if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account Created Successfully! Please login.')),
+        const SnackBar(
+          content: Text('Account Created Successfully! Please login.'),
+        ),
       );
       Navigator.pushReplacement(
         context,
@@ -121,14 +156,17 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
     } else {
       final message =
           result['message'] as String? ?? 'Signup failed. Please try again.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red[700]),
-      );
+      _showValidationError(message);
     }
   }
 
   @override
   void dispose() {
+    _strengthAnnouncement?.cancel();
+    _usernameFocus.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
+    _confirmPasswordFocus.dispose();
     _passwordController.removeListener(_checkPasswordStrength);
     _usernameController.dispose();
     _emailController.dispose();
@@ -220,12 +258,14 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
                   children: [
                     _buildInputField(
                       controller: _usernameController,
+                      focusNode: _usernameFocus,
                       label: 'UserName',
                       fieldName: 'Username',
                     ),
                     const SizedBox(height: 18),
                     _buildInputField(
                       controller: _emailController,
+                      focusNode: _emailFocus,
                       label: 'E-mail',
                       fieldName: 'Email',
                       keyboardType: TextInputType.emailAddress,
@@ -233,6 +273,7 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
                     const SizedBox(height: 18),
                     _buildInputField(
                       controller: _passwordController,
+                      focusNode: _passwordFocus,
                       label: 'Password',
                       fieldName: 'Password',
                       isPassword: true,
@@ -278,6 +319,7 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
                     const SizedBox(height: 18),
                     _buildInputField(
                       controller: _confirmPasswordController,
+                      focusNode: _confirmPasswordFocus,
                       label: 'Confirm Password',
                       fieldName: 'Confirm Password',
                       isPassword: true,
@@ -355,6 +397,7 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
   // Input field - label + mic icon + speaker icon (image eke widiyatama)
   Widget _buildInputField({
     required TextEditingController controller,
+    required FocusNode focusNode,
     required String label,
     required String fieldName,
     bool isPassword = false,
@@ -374,6 +417,9 @@ class _SignupScreenState extends State<SignupScreen> with TtsInputMixin {
           Expanded(
             child: TextField(
               controller: controller,
+              focusNode: focusNode,
+              autocorrect: !isPassword,
+              enableSuggestions: !isPassword,
               obscureText: isPassword && !isVisible,
               keyboardType: keyboardType,
               style: GoogleFonts.poppins(fontSize: 17, color: Colors.black87),

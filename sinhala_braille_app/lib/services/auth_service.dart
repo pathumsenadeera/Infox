@@ -58,6 +58,27 @@ class AuthService {
     ),
   );
 
+  static Future<Map<String, dynamic>> requestPasswordReset(String email) =>
+      _perform(
+        () => _session.publicRequest(
+          'POST',
+          '/auth/password-reset/request',
+          body: {'email': email},
+        ),
+      );
+
+  static Future<Map<String, dynamic>> confirmPasswordReset(
+    String email,
+    String code,
+    String password,
+  ) => _perform(
+    () => _session.publicRequest(
+      'POST',
+      '/auth/password-reset/confirm',
+      body: {'email': email, 'code': code, 'new_password': password},
+    ),
+  );
+
   static Future<Map<String, dynamic>> login(
     String username,
     String password,

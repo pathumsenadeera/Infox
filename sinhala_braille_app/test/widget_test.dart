@@ -15,6 +15,8 @@ import 'package:sinhala_braille_app/services/session_service.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/login_screen.dart';
 import 'package:sinhala_braille_app/screen/welcome_screen.dart';
+import 'package:sinhala_braille_app/screen/forgot_password_screen.dart';
+import 'package:sinhala_braille_app/services/password_recovery_service.dart';
 
 class _Store implements SessionStore {
   String? value;
@@ -66,6 +68,35 @@ class _LoginUser extends UserNotifier {
   }
 }
 
+class _Recovery extends PasswordRecoveryService {
+  int requests = 0;
+  int resets = 0;
+  List<String>? submitted;
+  Map<String, dynamic> requestResult = {
+    'success': true,
+    'message': 'If this email is registered, a code will arrive shortly.',
+    'resend_after_seconds': 60,
+  };
+  Map<String, dynamic> resetResult = {'success': true};
+
+  @override
+  Future<Map<String, dynamic>> requestCode(String email) async {
+    requests++;
+    return requestResult;
+  }
+
+  @override
+  Future<Map<String, dynamic>> resetPassword(
+    String email,
+    String code,
+    String password,
+  ) async {
+    resets++;
+    submitted = [email, code, password];
+    return resetResult;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
@@ -111,6 +142,117 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  Future<_Recovery> openRecovery(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = _Recovery();
+    await tester.pumpWidget(
+      MaterialApp(home: ForgotPasswordScreen(service: service)),
+    );
+    await tester.pumpAndSettle();
+    return service;
+  }
+
+  Future<void> tapText(WidgetTester tester, String text) async {
+    await tester.ensureVisible(find.text(text));
+    await tester.tap(find.text(text));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'recovery validates email and does not advance on network failure',
+    (tester) async {
+      final service = await openRecovery(tester);
+      await tester.enterText(find.byType(TextField), 'bad');
+      await tapText(tester, 'SEND CODE');
+      expect(service.requests, 0);
+      expect(find.text('Please enter a valid email address.'), findsOneWidget);
+      service.requestResult = {
+        'success': false,
+        'message': 'Connection timed out. Please try again.',
+      };
+      await tester.enterText(find.byType(TextField), 'reader@example.com');
+      await tapText(tester, 'SEND CODE');
+      expect(service.requests, 1);
+      expect(
+        find.text('Connection timed out. Please try again.'),
+        findsOneWidget,
+      );
+      expect(find.text('RESET PASSWORD'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'recovery validates code and confirmation then returns to login',
+    (tester) async {
+      final service = await openRecovery(tester);
+      await tester.enterText(find.byType(TextField), ' reader@example.com ');
+      await tapText(tester, 'SEND CODE');
+      expect(
+        find.textContaining('If this email is registered'),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed,
+        isNull,
+      );
+      await tapText(tester, 'RESET PASSWORD');
+      expect(service.resets, 0);
+      expect(
+        find.text('Enter the eight-digit code from your email.'),
+        findsOneWidget,
+      );
+      await tester.enterText(find.byType(TextField).at(0), '01234567');
+      await tester.enterText(find.byType(TextField).at(1), ' exact password ');
+      await tester.enterText(find.byType(TextField).at(2), 'different');
+      await tapText(tester, 'RESET PASSWORD');
+      expect(find.text('Passwords do not match.'), findsOneWidget);
+      expect(service.resets, 0);
+      await tester.enterText(find.byType(TextField).at(2), ' exact password ');
+      await tapText(tester, 'RESET PASSWORD');
+      expect(service.submitted, [
+        'reader@example.com',
+        '01234567',
+        ' exact password ',
+      ]);
+      expect(find.text('BACK TO LOGIN'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      await tapText(tester, 'BACK TO LOGIN');
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.byType(ForgotPasswordScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'recovery retains form on invalid code and clears secrets when changing email',
+    (tester) async {
+      final service = await openRecovery(tester);
+      await tester.enterText(find.byType(TextField), 'reader@example.com');
+      await tapText(tester, 'SEND CODE');
+      await tester.enterText(find.byType(TextField).at(0), '01234567');
+      await tester.enterText(find.byType(TextField).at(1), 'password');
+      await tester.enterText(find.byType(TextField).at(2), 'password');
+      service.resetResult = {
+        'success': false,
+        'message': 'The code is invalid or expired.',
+      };
+      await tapText(tester, 'RESET PASSWORD');
+      expect(service.resets, 1);
+      expect(find.text('BACK TO LOGIN'), findsNothing);
+      expect(find.text('The code is invalid or expired.'), findsOneWidget);
+      await tapText(tester, 'USE A DIFFERENT EMAIL');
+      await tapText(tester, 'SEND CODE');
+      for (final field in tester.widgetList<TextField>(
+        find.byType(TextField),
+      )) {
+        expect(field.controller!.text, isEmpty);
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   Future<_LoginUser> openLogin(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1000, 1800);

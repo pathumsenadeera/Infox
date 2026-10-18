@@ -51,6 +51,21 @@ class _Fonts implements AssetManifest {
   List<AssetMetadata>? getAssetVariants(String key) => null;
 }
 
+class _LoginUser extends UserNotifier {
+  _LoginUser() : super(session: SessionService(store: _Store()));
+  int calls = 0;
+  Map<String, dynamic> result = {
+    'success': false,
+    'message': 'Could not connect to the server. Please try again.',
+  };
+
+  @override
+  Future<Map<String, dynamic>> login(String username, String password) async {
+    calls++;
+    return result;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
@@ -96,6 +111,85 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  Future<_LoginUser> openLogin(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1000, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final user = _LoginUser();
+    await user.ready;
+    addTearDown(user.dispose);
+    await tester.pumpWidget(
+      UserProvider(
+        notifier: user,
+        child: const MaterialApp(home: LoginScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'reader');
+    await tester.enterText(find.byType(TextField).last, 'wrong');
+    return user;
+  }
+
+  testWidgets('network and ordinary auth errors never create a local lock', (
+    tester,
+  ) async {
+    final user = await openLogin(tester);
+    for (var attempt = 0; attempt < 6; attempt++) {
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+      await tester.pumpAndSettle();
+    }
+    user.result = {
+      'success': false,
+      'status_code': 401,
+      'message': 'Invalid username or password',
+    };
+    for (var attempt = 0; attempt < 6; attempt++) {
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+      await tester.pumpAndSettle();
+    }
+    expect(user.calls, 12);
+    expect(
+      tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+      isNotNull,
+    );
+    expect(find.textContaining('Account temporarily locked'), findsNothing);
+  });
+
+  testWidgets('server lock disables only the matching username', (
+    tester,
+  ) async {
+    final user = await openLogin(tester);
+    user.result = {
+      'success': false,
+      'status_code': 429,
+      'retry_after_seconds': 840,
+      'message': 'Too many incorrect passwords.',
+    };
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Account temporarily locked'), findsOneWidget);
+    expect(
+      tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+      isNull,
+    );
+    expect(find.textContaining('14:'), findsWidgets);
+    await tester.enterText(find.byType(TextField).first, 'other');
+    await tester.pump();
+    expect(
+      tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+      isNotNull,
+    );
+    await tester.enterText(find.byType(TextField).first, ' READER ');
+    await tester.pump();
+    expect(
+      tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed,
+      isNull,
+    );
+    expect(user.calls, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('legacy ID cannot bypass login after upgrade', (tester) async {
     SharedPreferences.setMockInitialValues({

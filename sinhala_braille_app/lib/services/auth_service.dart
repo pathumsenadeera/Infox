@@ -20,6 +20,9 @@ class AuthService {
       return {
         'success': false,
         'status_code': response.statusCode,
+        'retry_after_seconds': int.tryParse(
+          response.headers['retry-after'] ?? '',
+        ),
         'message':
             data['detail'] is String
                 ? data['detail']

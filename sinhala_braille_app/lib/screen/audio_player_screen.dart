@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sinhala_braille_app/services/saved_translation_service.dart';
+import 'package:sinhala_braille_app/services/session_service.dart';
 import 'package:sinhala_braille_app/providers/app_settings_provider.dart';
 import 'package:sinhala_braille_app/providers/tts_service.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 
 class AudioPlayerScreen extends StatefulWidget {
   /// Optional translated text passed from the scan result.
-  /// Falls back to sample Sinhala Unicode text if not provided.
+  /// Empty when no translation is available.
   final String? translatedText;
   final String? documentTitle;
   final String? documentId;
@@ -26,26 +28,19 @@ class AudioPlayerScreen extends StatefulWidget {
 class _AudioPlayerScreenState extends State<AudioPlayerScreen>
     with WidgetsBindingObserver {
   bool _isPlaying = false;
+  int _playbackGeneration = 0;
+  late final Future<void> _bookmarkReady;
 
-  // Sample Sinhala Unicode text (Braille translation placeholder)
-  static const String _sampleSinhalaText =
-      'මෙය සිංහල බ්‍රේල් පරිවර්තන ප්‍රතිඵලයයි.\n\n'
-      'ඔබේ ලේඛනය සාර්ථකව ස්කෑන් කර ඇත.\n\n'
-      'AI පරිවර්තන ප්‍රතිඵලය මෙහි දිස්වනු ඇත.';
-
-  String get _displayText =>
-      widget.translatedText?.isNotEmpty == true
-          ? widget.translatedText!
-          : _sampleSinhalaText;
-
+  final String? _owner = SessionService.instance.userId;
+  late final String _identifier =
+      widget.documentId ?? 'local_${DateTime.now().microsecondsSinceEpoch}';
+  String get _displayText => widget.translatedText ?? '';
   String get _title => widget.documentTitle ?? 'Scan Result';
-  String get _identifier => widget.documentId ?? _title;
-
   // ── Paragraph / sentence tracking for rewind/forward + bookmark ──────────
   late List<String> _paragraphs;
   int _currentIndex = 0;
 
-  static String _bookmarkKey(String id) => 'bookmark_$id';
+  String _bookmarkKey(String id) => 'bookmark_${_owner}_$id';
 
   @override
   void initState() {
@@ -53,7 +48,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
     WidgetsBinding.instance.addObserver(this);
     // Split on blank lines (paragraphs) then fall back to sentences
     _paragraphs = _splitIntoParagraphs(_displayText);
-    _loadBookmark();
+    _bookmarkReady = _loadBookmark();
 
     // Verify language pack availability upon loading audio player (FR 24)
     TtsService.instance.verifySinhalaVoicePack();
@@ -69,9 +64,11 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Save reading position when app goes into background or pauses (FR 27)
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _saveBookmark();
-      TtsService.instance.pause();
+      ++_playbackGeneration;
+      TtsService.instance.stop();
       if (mounted) setState(() => _isPlaying = false);
     }
   }
@@ -94,7 +91,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
   Future<void> _loadBookmark() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getInt(_bookmarkKey(_identifier)) ?? 0;
-    if (saved > 0 && saved < _paragraphs.length) {
+    if (mounted && saved > 0 && saved < _paragraphs.length) {
       setState(() => _currentIndex = saved);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -109,6 +106,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
   }
 
   Future<void> _saveBookmark() async {
+    if (_owner == null || _displayText.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_bookmarkKey(_identifier), _currentIndex);
   }
@@ -116,165 +114,182 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
   // ── Playback controls ─────────────────────────────────────────────────────
 
   Future<void> _togglePlay() async {
+    if (_paragraphs.isEmpty) return;
     if (_isPlaying) {
-      await TtsService.instance.pause();
+      ++_playbackGeneration;
       setState(() => _isPlaying = false);
+      await TtsService.instance.stop();
     } else {
-      setState(() => _isPlaying = true);
-      await _speakFromCurrentIndex();
+      await _startPlayback();
     }
   }
 
-  Future<void> _speakFromCurrentIndex() async {
-    if (_paragraphs.isEmpty) return;
-    final rate = AppSettings.of(context).speechRate;
-    final voice = AppSettings.of(context).voiceType;
-
-    // Speak each paragraph in sequence starting from _currentIndex
-    for (int i = _currentIndex; i < _paragraphs.length; i++) {
-      if (!mounted || !_isPlaying) break;
-      setState(() => _currentIndex = i);
-      await _saveBookmark();
-      await TtsService.instance.speakSinhala(
-        _paragraphs[i],
-        speechRate: rate,
-        voiceType: voice,
-      );
-      // Wait for this chunk to finish before moving to the next
-      await Future.doWhile(() async {
-        await Future.delayed(const Duration(milliseconds: 200));
-        return TtsService.instance.isSpeaking;
-      });
-    }
-
-    if (mounted && _currentIndex >= _paragraphs.length - 1) {
-      setState(() {
-        _isPlaying = false;
-        _currentIndex = 0; // Reset after finishing
-      });
-      await _saveBookmark();
+  Future<void> _startPlayback({int? section}) async {
+    final generation = ++_playbackGeneration;
+    await _bookmarkReady;
+    if (!mounted || generation != _playbackGeneration) return;
+    await TtsService.instance.stop();
+    if (!mounted || generation != _playbackGeneration) return;
+    setState(() {
+      if (section != null) _currentIndex = section;
+      _isPlaying = true;
+    });
+    try {
+      for (int i = _currentIndex; i < _paragraphs.length; i++) {
+        if (!mounted || generation != _playbackGeneration) return;
+        setState(() => _currentIndex = i);
+        await _saveBookmark();
+        if (!mounted || generation != _playbackGeneration) return;
+        final settings = AppSettings.of(context);
+        final completed = await TtsService.instance.speakSinhala(
+          _paragraphs[i],
+          speechRate: settings.speechRate,
+          voiceType: settings.voiceType,
+        );
+        if (!mounted || generation != _playbackGeneration) return;
+        if (!completed) {
+          setState(() => _isPlaying = false);
+          return;
+        }
+      }
+      if (mounted && generation == _playbackGeneration) {
+        setState(() {
+          _isPlaying = false;
+          _currentIndex = 0;
+        });
+        await _saveBookmark();
+      }
+    } catch (_) {
+      if (mounted && generation == _playbackGeneration) {
+        setState(() => _isPlaying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Speech playback failed. Please try again.'),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _onRewind() async {
-    await TtsService.instance.stop();
-    setState(() {
-      _currentIndex = (_currentIndex - 1).clamp(0, _paragraphs.length - 1);
-      _isPlaying = true;
-    });
-    await _saveBookmark();
-    await _speakFromCurrentIndex();
+    if (_paragraphs.isEmpty) return;
+    await _startPlayback(
+      section: (_currentIndex - 1).clamp(0, _paragraphs.length - 1),
+    );
   }
 
   Future<void> _onForward() async {
-    await TtsService.instance.stop();
-    setState(() {
-      _currentIndex = (_currentIndex + 1).clamp(0, _paragraphs.length - 1);
-      _isPlaying = true;
-    });
-    await _saveBookmark();
-    await _speakFromCurrentIndex();
+    if (_paragraphs.isEmpty) return;
+    await _startPlayback(
+      section: (_currentIndex + 1).clamp(0, _paragraphs.length - 1),
+    );
   }
-
   // ── Save document dialog ──────────────────────────────────────────────────
 
-  void _onDownload() {
-    final titleController = TextEditingController(text: _title);
-
-    showDialog(
+  Future<void> _onDownload() async {
+    if (_owner == null || _displayText.trim().isEmpty) return;
+    final controller = TextEditingController(text: _title);
+    bool saving = false;
+    String? error;
+    await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder:
-          (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Text(
-              'Save Document',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF7B4FE0),
-              ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Enter a name for this document:',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: titleController,
-                  style: GoogleFonts.poppins(fontSize: 15),
-                  decoration: InputDecoration(
-                    hintText: 'Document name',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF7B4FE0)),
+          (ctx) => StatefulBuilder(
+            builder:
+                (ctx, update) => PopScope(
+                  canPop: !saving,
+                  child: AlertDialog(
+                    title: const Text('Save on this device'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Available offline in Saved locally. Saving again updates this scan’s local copy.',
+                        ),
+                        TextField(
+                          controller: controller,
+                          enabled: !saving,
+                          maxLength: 120,
+                          decoration: InputDecoration(
+                            labelText: 'Document name',
+                            errorText: error,
+                          ),
+                        ),
+                      ],
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Color(0xFF7B4FE0),
-                        width: 2,
+                    actions: [
+                      TextButton(
+                        onPressed: saving ? null : () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
                       ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.poppins(color: Colors.black54),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7B4FE0),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () {
-                  final name = titleController.text.trim();
-                  Navigator.pop(ctx);
-                  if (name.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please enter a document name.'),
+                      FilledButton(
+                        onPressed:
+                            saving
+                                ? null
+                                : () async {
+                                  final title = controller.text.trim();
+                                  if (title.isEmpty) {
+                                    update(
+                                      () => error = 'Please enter a name.',
+                                    );
+                                    return;
+                                  }
+                                  update(() {
+                                    saving = true;
+                                    error = null;
+                                  });
+                                  try {
+                                    if (SessionService.instance.userId !=
+                                        _owner) {
+                                      throw const SessionExpired();
+                                    }
+                                    await SavedTranslationService.instance.save(
+                                      _owner,
+                                      SavedTranslation(
+                                        id: _identifier,
+                                        title: title,
+                                        text: _displayText,
+                                        savedAt: DateTime.now(),
+                                      ),
+                                    );
+                                    if (!ctx.mounted) return;
+                                    Navigator.pop(ctx);
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Translation saved on this device.',
+                                        ),
+                                      ),
+                                    );
+                                    TtsService.instance.speakEnglish(
+                                      'Translation saved on this device',
+                                    );
+                                  } catch (_) {
+                                    if (ctx.mounted) {
+                                      update(() {
+                                        saving = false;
+                                        error = 'Could not save. Please retry.';
+                                      });
+                                    }
+                                  }
+                                },
+                        child: Text(saving ? 'Saving…' : 'Save'),
                       ),
-                    );
-                    return;
-                  }
-                  // Duplicate check + save will be wired to backend in Phase 2
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('"$name" saved successfully!'),
-                      backgroundColor: Colors.green[700],
-                    ),
-                  );
-                },
-                child: Text(
-                  'Save',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    ],
                   ),
                 ),
-              ),
-            ],
           ),
     );
+    // The dialog route may still be animating out; dispose after its transition.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    controller.dispose();
   }
 
   @override
   void dispose() {
+    ++_playbackGeneration;
     WidgetsBinding.instance.removeObserver(this);
     _saveBookmark();
     TtsService.instance.stop();
@@ -313,6 +328,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
                     IconButton(
                       onPressed: () {
                         TtsService.instance.stop();
+                        if (Navigator.canPop(context)) {
+                          Navigator.pop(context);
+                          return;
+                        }
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
@@ -399,6 +418,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
                         ),
                         GestureDetector(
                           onTap: () async {
+                            ++_playbackGeneration;
+                            await _bookmarkReady;
+                            if (!context.mounted) return;
                             final messenger = ScaffoldMessenger.of(context);
                             setState(() {
                               _currentIndex = 0;

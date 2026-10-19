@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:path_provider/path_provider.dart';
+
 import 'package:sinhala_braille_app/main.dart';
 import 'package:sinhala_braille_app/screen/assistive_reader_screen.dart';
 import 'package:sinhala_braille_app/screen/audio_player_screen.dart';
@@ -367,11 +367,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       return;
     }
     final epoch = _cameraEpoch;
+    File? temporaryPhoto;
     setState(() => _isCapturing = true);
 
     try {
       // Take the full-resolution JPEG photo
       final XFile photo = await camera.takePicture();
+      temporaryPhoto = File(photo.path);
       if (!mounted || _cancelled || !_appActive || epoch != _cameraEpoch) {
         if (mounted) setState(() => _isCapturing = false);
         return;
@@ -380,38 +382,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       await _cameraController?.pausePreview();
       debugPrint('Photo captured: ${photo.path}');
 
-      // Save to public Downloads folder — visible in Files app immediately
-      Directory scansDir = Directory(
-        '/storage/emulated/0/Download/BrailleScans',
-      );
-      try {
-        if (!await scansDir.exists()) await scansDir.create(recursive: true);
-      } catch (_) {
-        // Fallback to app-specific external dir on permission failure
-        final externalDir = await getExternalStorageDirectory();
-        if (externalDir == null) {
-          throw Exception('No external storage available');
-        }
-        scansDir = Directory('${externalDir.path}/BrailleScans');
-        if (!await scansDir.exists()) await scansDir.create(recursive: true);
-      }
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final savePath = '${scansDir.path}/braille_scan_$timestamp.jpg';
-
-      // Direct copy — zero quality loss, no decode/re-encode
-      await File(photo.path).copy(savePath);
-      debugPrint('Saved: $savePath');
-
+      // Camera output is temporary; retain it only while uploading.
+      final savePath = photo.path;
       if (!mounted || _cancelled || !_appActive || epoch != _cameraEpoch) {
         if (mounted) setState(() => _isCapturing = false);
         return;
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Image saved to Downloads/BrailleScans')),
-      );
-
       // ── FR 17: Upload Braille scan to backend for AI translation ─────────
       setState(() {
         _isUploading = true;
@@ -428,6 +404,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
 
       final result = await ScanService.uploadBrailleImage(
         imageFile: File(savePath),
+        isCancelled: () => _cancelled || !mounted,
         userId: userId,
         onStatusUpdate: (status) {
           if (mounted && !_cancelled) {
@@ -449,7 +426,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
           builder:
               (_) => AudioPlayerScreen(
                 translatedText: result.translatedText,
-                documentId: result.docId?.toString(),
+                documentId:
+                    result.docId == null ? null : 'scan_${result.docId}',
                 documentTitle:
                     'Scan ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
               ),
@@ -516,6 +494,14 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
             ),
           ),
         );
+      }
+    } finally {
+      try {
+        if (temporaryPhoto != null && await temporaryPhoto.exists()) {
+          await temporaryPhoto.delete();
+        }
+      } catch (error) {
+        debugPrint('Temporary scan cleanup failed: $error');
       }
     }
   }

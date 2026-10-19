@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:sinhala_braille_app/screen/live_camera_screen.dart';
+import 'package:sinhala_braille_app/screen/saved_history_screen.dart';
+import 'package:sinhala_braille_app/screen/audio_player_screen.dart';
 import 'camera_capture_preparation_test.dart' show RecordingCamera, back;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -178,6 +180,157 @@ void main() {
   }
 
   testWidgets(
+    'history back button returns to dashboard without a previous route',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(const MaterialApp(home: SavedHistoryScreen()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Back to dashboard'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AssistiveReaderScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets('replay reads the current account speech multiplier', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1000, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final rates = <double>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('flutter_tts'), (
+          call,
+        ) async {
+          if (call.method == 'getLanguages') return ['si-LK'];
+          if (call.method == 'setSpeechRate') {
+            rates.add(call.arguments as double);
+          }
+          return 1;
+        });
+    final settings = AppSettingsNotifier()..setSpeechRate(0.8);
+    addTearDown(settings.dispose);
+    await tester.pumpWidget(
+      AppSettings(
+        notifier: settings,
+        child: const MaterialApp(
+          home: AudioPlayerScreen(translatedText: 'Test translation'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pump(const Duration(milliseconds: 350));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(rates.last, 0.4);
+    await tester.pump(const Duration(milliseconds: 300));
+    settings.setSpeechRate(1.8);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pump(const Duration(milliseconds: 350));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(rates.last, 0.9);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'paragraph playback waits for completion and cancels obsolete loops',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final spoken = <String>[];
+      Completer<int>? pending;
+      bool awaitCompletion = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(const MethodChannel('flutter_tts'), (
+            call,
+          ) async {
+            if (call.method == 'getLanguages') return ['si-LK'];
+            if (call.method == 'awaitSpeakCompletion') {
+              awaitCompletion = call.arguments as bool;
+            }
+            if (call.method == 'stop' &&
+                pending != null &&
+                !pending!.isCompleted) {
+              pending!.complete(0);
+            }
+            if (call.method == 'speak' && awaitCompletion) {
+              spoken.add(
+                call.arguments is Map
+                    ? (call.arguments as Map)['text'] as String
+                    : call.arguments as String,
+              );
+              pending = Completer<int>();
+              return pending!.future;
+            }
+            return 1;
+          });
+      final settings = AppSettingsNotifier();
+      addTearDown(settings.dispose);
+      await tester.pumpWidget(
+        AppSettings(
+          notifier: settings,
+          child: const MaterialApp(
+            home: AudioPlayerScreen(
+              translatedText: 'First section\n\nMiddle section\n\nLast section',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      Future<void> flush() async {
+        for (var i = 0; i < 25; i++) {
+          await tester.pump();
+        }
+      }
+
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pump(const Duration(milliseconds: 350));
+      await flush();
+      expect(spoken, ['First section']);
+      await tester.pump(const Duration(seconds: 3));
+      expect(spoken, ['First section']);
+      pending!.complete(1);
+      await flush();
+      expect(spoken, ['First section', 'Middle section']);
+      await tester.tap(find.byIcon(Icons.pause));
+      await tester.pump(const Duration(milliseconds: 350));
+      await flush();
+      expect(spoken, ['First section', 'Middle section']);
+      await tester.tap(find.text('Reset bookmark'));
+      await tester.pump(const Duration(milliseconds: 350));
+      await flush();
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pump(const Duration(milliseconds: 350));
+      await flush();
+      expect(spoken.last, 'First section');
+      pending!.complete(1);
+      await flush();
+      expect(spoken.last, 'Middle section');
+      pending!.complete(1);
+      await flush();
+      expect(spoken.last, 'Last section');
+      pending!.complete(1);
+      await flush();
+      expect(find.text('Section 1 of 3'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
     'camera cancels moving/background holds and restarts the full three seconds',
     (tester) async {
       tester.view.physicalSize = const Size(1000, 1800);
@@ -221,15 +374,11 @@ void main() {
       sample(0);
       sample(0);
       await tester.pump();
-      tester.binding.handleAppLifecycleStateChanged(
-        AppLifecycleState.inactive,
-      );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump(const Duration(seconds: 4));
       expect(created.first.disposed, isTrue);
       expect(created.first.captures, 0);
-      tester.binding.handleAppLifecycleStateChanged(
-        AppLifecycleState.resumed,
-      );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await warmUp();
       expect(created.length, 2);
       sample(0);
@@ -241,7 +390,28 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(created.last.captures, 1);
       await tester.pumpWidget(const SizedBox());
-      created.last.photo.complete(XFile('unused-cancelled-photo.jpg'));
+      late File cancelledPhoto;
+      await tester.runAsync(() async {
+        final folder = await Directory.systemTemp.createTemp(
+          'infox_cancel_test_',
+        );
+        addTearDown(() => folder.delete(recursive: true));
+        cancelledPhoto = await File(
+          '${folder.path}/capture.jpg',
+        ).writeAsString('test');
+      });
+      created.last.photo.complete(XFile(cancelledPhoto.path));
+      await tester.pump();
+      bool exists = true;
+      for (var i = 0; i < 20 && exists; i++) {
+        await tester.pump();
+        exists =
+            (await tester.runAsync(() async {
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+              return cancelledPhoto.exists();
+            }))!;
+      }
+      expect(exists, isFalse);
       await tester.pump();
       await events.close();
       expect(tester.takeException(), isNull);

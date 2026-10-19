@@ -20,7 +20,9 @@ class ScanService {
     required File imageFile,
     required int userId,
     void Function(String)? onStatusUpdate,
+    bool Function()? isCancelled,
   }) async {
+    if (isCancelled?.call() == true) throw Exception('Scan cancelled');
     final uri = Uri.parse('$_baseUrl/scan');
 
     final response = await SessionService.instance.sendAuthenticated(() async {
@@ -34,7 +36,7 @@ class ScanService {
       final dynamic data = json.decode(response.body);
       if (data is Map<String, dynamic> && data.containsKey('scan_id')) {
         final int scanId = data['scan_id'];
-        return _pollScanStatus(scanId, onStatusUpdate);
+        return _pollScanStatus(scanId, onStatusUpdate, isCancelled);
       }
       throw Exception('Unexpected server response format');
     } else {
@@ -60,13 +62,16 @@ class ScanService {
   static Future<ScanResult> _pollScanStatus(
     int scanId,
     void Function(String)? onStatusUpdate,
+    bool Function()? isCancelled,
   ) async {
     int polls = 0;
 
     // Poll every 3 seconds up to _maxPolls times
     while (polls < _maxPolls) {
+      if (isCancelled?.call() == true) throw Exception('Scan cancelled');
       if (onStatusUpdate != null) onStatusUpdate('pending');
       await Future.delayed(const Duration(seconds: 3));
+      if (isCancelled?.call() == true) throw Exception('Scan cancelled');
       polls++;
 
       final response = await SessionService.instance.request(
@@ -117,7 +122,7 @@ class ScanResult {
     return ScanResult(
       translatedText: json['translated_text'] as String? ?? '',
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
-      docId: json['doc_id'] as int?,
+      docId: json['scan_id'] as int?,
     );
   }
 }

@@ -16,6 +16,7 @@ class TtsService {
 
   bool _sttAvailable = false;
   bool _speaking = false;
+  int _speechGeneration = 0;
   bool _isEngineReady = false;
   bool _isSinhalaSupported = false;
 
@@ -58,10 +59,14 @@ class TtsService {
     try {
       final dynamic raw = await _tts.getVoices;
       if (raw is List) {
-        _voices = raw
-            .whereType<Map>()
-            .map((v) => v.map((k, val) => MapEntry(k.toString(), val.toString())))
-            .toList();
+        _voices =
+            raw
+                .whereType<Map>()
+                .map(
+                  (v) =>
+                      v.map((k, val) => MapEntry(k.toString(), val.toString())),
+                )
+                .toList();
       }
     } catch (_) {
       // getVoices not supported on this engine — gender selection will be skipped.
@@ -89,24 +94,32 @@ class TtsService {
   Map<String, String>? _findVoice(String locale, String voiceType) {
     if (_voices.isEmpty) return null;
     final wantedGender = voiceType.toLowerCase(); // 'male' or 'female'
-    final langCode = locale.split('-')[0].toLowerCase(); // e.g. 'si' from 'si-LK'
+    final langCode =
+        locale.split('-')[0].toLowerCase(); // e.g. 'si' from 'si-LK'
 
     // Filter voices that at least match the language code.
-    final localeVoices = _voices.where((v) {
-      final vLocale = (v['locale'] ?? '').toLowerCase();
-      return vLocale.startsWith(langCode);
-    }).toList();
+    final localeVoices =
+        _voices.where((v) {
+          final vLocale = (v['locale'] ?? '').toLowerCase();
+          return vLocale.startsWith(langCode);
+        }).toList();
 
     if (localeVoices.isEmpty) return null;
 
     // Try matching by gender field (Android usually provides this).
-    final byGender = localeVoices.where((v) =>
-        (v['gender'] ?? '').toLowerCase() == wantedGender).toList();
+    final byGender =
+        localeVoices
+            .where((v) => (v['gender'] ?? '').toLowerCase() == wantedGender)
+            .toList();
     if (byGender.isNotEmpty) return byGender.first;
 
     // Try matching by voice name containing 'male'/'female'.
-    final byName = localeVoices.where((v) =>
-        (v['name'] ?? '').toLowerCase().contains(wantedGender)).toList();
+    final byName =
+        localeVoices
+            .where(
+              (v) => (v['name'] ?? '').toLowerCase().contains(wantedGender),
+            )
+            .toList();
     if (byName.isNotEmpty) return byName.first;
 
     // No gender match — return first available voice for the locale as fallback.
@@ -115,13 +128,22 @@ class TtsService {
 
   // ── Speak Sinhala (si-LK) ───────────────────────────────────────────────
 
-  Future<void> speakSinhala(
+  Future<bool> speakSinhala(
     String text, {
-    double speechRate = 0.5,
+    double speechRate = 1.0,
     String voiceType = 'Female',
   }) async {
+    final generation = ++_speechGeneration;
     await _tts.stop();
-    await _tts.setSpeechRate(speechRate);
+    // Account settings are multipliers (1x = normal). The installed Android
+    // plugin multiplies its input by two before calling TextToSpeech.
+    final multiplier = speechRate.clamp(0.5, 3.0);
+    final engineRate = multiplier / 2.0;
+    await _tts.setSpeechRate(
+      defaultTargetPlatform == TargetPlatform.android
+          ? engineRate
+          : engineRate.clamp(0.0, 1.0),
+    );
     await _tts.setLanguage('si-LK');
 
     // Try to apply a gender-matching voice for Sinhala.
@@ -135,7 +157,11 @@ class TtsService {
       final enVoice = _findVoice('en-US', voiceType);
       if (enVoice != null) await _tts.setVoice(enVoice);
     }
-    await _tts.speak(text);
+    if (generation != _speechGeneration) return false;
+    await _tts.awaitSpeakCompletion(true);
+    if (generation != _speechGeneration) return false;
+    final result = await _tts.speak(text);
+    return generation == _speechGeneration && result == 1;
   }
 
   // ── Speak English (en-US) ───────────────────────────────────────────────
@@ -145,22 +171,28 @@ class TtsService {
     double speechRate = 0.5,
     String voiceType = 'Female',
   }) async {
+    final generation = ++_speechGeneration;
     await _tts.stop();
     await _tts.setSpeechRate(speechRate);
     await _tts.setLanguage('en-US');
     final voice = _findVoice('en-US', voiceType);
     if (voice != null) await _tts.setVoice(voice);
+    if (generation != _speechGeneration) return;
+    await _tts.awaitSpeakCompletion(false);
+    if (generation != _speechGeneration) return;
     await _tts.speak(text);
   }
 
   // ── Playback controls ───────────────────────────────────────────────────
 
   Future<void> pause() async {
+    ++_speechGeneration;
     await _tts.pause();
     _speaking = false;
   }
 
   Future<void> stop() async {
+    ++_speechGeneration;
     await _tts.stop();
     _speaking = false;
   }
@@ -204,7 +236,8 @@ class TtsService {
   Future<void> announceError(String message, {String? errorCode}) async {
     debugPrint('[Spoken Error Alert] Code: $errorCode | Message: $message');
     await stop();
-    final alertText = errorCode != null ? 'Error $errorCode: $message' : message;
+    final alertText =
+        errorCode != null ? 'Error $errorCode: $message' : message;
     await speakEnglish(alertText, speechRate: 0.5);
   }
 

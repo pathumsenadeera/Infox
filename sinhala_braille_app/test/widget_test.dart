@@ -1,6 +1,11 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:sinhala_braille_app/screen/live_camera_screen.dart';
+import 'camera_capture_preparation_test.dart' show RecordingCamera, back;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 // ignore: implementation_imports
@@ -30,6 +35,35 @@ class _Store implements SessionStore {
   @override
   Future<void> delete() async {
     value = null;
+  }
+}
+
+class _PreviewCamera extends RecordingCamera {
+  int captures = 0;
+  bool disposed = false;
+  final photo = Completer<XFile>();
+  @override
+  Future<void> initialize() async {
+    value = value.copyWith(
+      isInitialized: true,
+      previewSize: const Size(640, 480),
+    );
+  }
+
+  @override
+  Future<void> setFlashMode(FlashMode mode) async {}
+  @override
+  Widget buildPreview() => const SizedBox.expand();
+  @override
+  Future<XFile> takePicture() {
+    captures++;
+    return photo.future;
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+    await super.dispose();
   }
 }
 
@@ -142,6 +176,77 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'camera cancels moving/background holds and restarts the full three seconds',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final previousCameras = cameras;
+      cameras = [back];
+      addTearDown(() => cameras = previousCameras);
+      final events = StreamController<AccelerometerEvent>.broadcast(sync: true);
+      final created = <_PreviewCamera>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LiveCameraScreen(
+            cameraFactory: (_) {
+              final camera = _PreviewCamera();
+              created.add(camera);
+              return camera;
+            },
+            accelerometerEvents: events.stream,
+          ),
+        ),
+      );
+      Future<void> warmUp() async {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(seconds: 2));
+      }
+
+      void sample(double x) =>
+          events.add(AccelerometerEvent(x, 0, 9.8, DateTime.now()));
+      await warmUp();
+      sample(0);
+      sample(0);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      expect(created.first.captures, 0);
+      sample(1.2); // Movement is below the old tilt limit but resets the hold.
+      await tester.pump(const Duration(seconds: 2));
+      expect(created.first.captures, 0);
+      sample(0);
+      sample(0);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.inactive,
+      );
+      await tester.pump(const Duration(seconds: 4));
+      expect(created.first.disposed, isTrue);
+      expect(created.first.captures, 0);
+      tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      await warmUp();
+      expect(created.length, 2);
+      sample(0);
+      sample(0);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      expect(created.last.captures, 0);
+      sample(0);
+      await tester.pump(const Duration(seconds: 1));
+      expect(created.last.captures, 1);
+      await tester.pumpWidget(const SizedBox());
+      created.last.photo.complete(XFile('unused-cancelled-photo.jpg'));
+      await tester.pump();
+      await events.close();
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   Future<_Recovery> openRecovery(WidgetTester tester) async {
     tester.view.physicalSize = const Size(420, 900);

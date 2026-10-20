@@ -22,7 +22,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="sinhala_braille_app"
+        android:label="Sinhala Braille"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

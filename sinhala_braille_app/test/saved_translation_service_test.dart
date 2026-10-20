@@ -85,4 +85,52 @@ void main() {
       42,
     );
   });
+
+  test(
+    'duplicate names ignore case and whitespace but allow same scan and other accounts',
+    () async {
+      await store.save('1', item('My Notes'));
+      await expectLater(
+        store.save('1', item('  my   NOTES ', id: 'scan_13')),
+        throwsA(isA<DuplicateTranslationName>()),
+      );
+      expect((await store.list('1')).single.title, 'My Notes');
+      await store.save('1', item('MY NOTES'));
+      await store.save('2', item('my notes', id: 'scan_13'));
+      expect(await store.list('1'), hasLength(1));
+      expect(await store.list('2'), hasLength(1));
+    },
+  );
+
+  test(
+    'rename conflict preserves both copies and deletion frees the name',
+    () async {
+      await store.save('1', item('සිංහල'));
+      await store.save('1', item('Other', id: 'scan_13'));
+      await expectLater(
+        store.save('1', item('සිංහල', id: 'scan_13')),
+        throwsA(isA<DuplicateTranslationName>()),
+      );
+      expect((await store.list('1')).map((entry) => entry.title).toSet(), {
+        'සිංහල',
+        'Other',
+      });
+      await store.delete('1', 'scan_12');
+      await store.save('1', item('සිංහල', id: 'scan_13'));
+      expect((await store.list('1')).single.id, 'scan_13');
+    },
+  );
+
+  test(
+    'simultaneous duplicate saves produce one copy and one conflict',
+    () async {
+      final first = store.save('1', item('Shared'));
+      final second = store.save('1', item('shared', id: 'scan_13'));
+      await Future.wait([
+        first,
+        expectLater(second, throwsA(isA<DuplicateTranslationName>())),
+      ]);
+      expect(await store.list('1'), hasLength(1));
+    },
+  );
 }

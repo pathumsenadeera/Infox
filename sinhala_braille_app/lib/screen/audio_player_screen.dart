@@ -266,6 +266,17 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen>
                                     TtsService.instance.speakEnglish(
                                       'Translation saved on this device',
                                     );
+                                  } on DuplicateTranslationName {
+                                    if (ctx.mounted) {
+                                      update(() {
+                                        saving = false;
+                                        error =
+                                            DuplicateTranslationName.message;
+                                      });
+                                      TtsService.instance.announceError(
+                                        DuplicateTranslationName.message,
+                                      );
+                                    }
                                   } catch (_) {
                                     if (ctx.mounted) {
                                       update(() {

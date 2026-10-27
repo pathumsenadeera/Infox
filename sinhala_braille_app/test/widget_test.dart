@@ -44,6 +44,8 @@ class _PreviewCamera extends RecordingCamera {
   int captures = 0;
   bool disposed = false;
   final photo = Completer<XFile>();
+  final flashModes = <FlashMode>[];
+  Completer<void>? disposalGate;
   @override
   Future<void> initialize() async {
     value = value.copyWith(
@@ -53,7 +55,13 @@ class _PreviewCamera extends RecordingCamera {
   }
 
   @override
-  Future<void> setFlashMode(FlashMode mode) async {}
+  Future<void> setFlashMode(FlashMode mode) async {
+    flashModes.add(mode);
+  }
+
+  @override
+  Future<void> pausePreview() async {}
+
   @override
   Widget buildPreview() => const SizedBox.expand();
   @override
@@ -66,6 +74,7 @@ class _PreviewCamera extends RecordingCamera {
   Future<void> dispose() async {
     disposed = true;
     await super.dispose();
+    await disposalGate?.future;
   }
 }
 
@@ -327,6 +336,56 @@ void main() {
       await flush();
       expect(find.text('Section 1 of 3'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'camera closes after exposure and stays closed while processing',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final previous = cameras;
+      cameras = [back];
+      addTearDown(() => cameras = previous);
+      final events = StreamController<AccelerometerEvent>.broadcast(sync: true);
+      final camera = _PreviewCamera()..disposalGate = Completer<void>();
+      var cameraCreations = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LiveCameraScreen(
+            cameraFactory: (_) {
+              cameraCreations++;
+              return camera;
+            },
+            accelerometerEvents: events.stream,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(seconds: 2));
+      events.add(AccelerometerEvent(0, 0, 9.8, DateTime.now()));
+      events.add(AccelerometerEvent(0, 0, 9.8, DateTime.now()));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      expect(camera.captures, 1);
+      expect(camera.flashModes.last, FlashMode.torch);
+      camera.photo.complete(XFile('unused-photo.jpg'));
+      await tester.pump();
+      expect(camera.flashModes.last, FlashMode.off);
+      expect(camera.disposed, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(cameraCreations, 1);
+      expect(find.text('STATUS: UPLOADING'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      camera.disposalGate!.complete();
+      await tester.pump();
+      await events.close();
+      expect(tester.takeException(), isNull);
     },
   );
 

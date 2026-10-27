@@ -94,7 +94,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _appActive = true;
-      _initializeCameraAndSensors();
+      if (!_isCapturing) _initializeCameraAndSensors();
     } else {
       _appActive = false;
       _cancelHoldWindow();
@@ -159,7 +159,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
         if (!mounted || !_appActive || epoch != _cameraEpoch || _cancelled) {
           return;
         }
-        await _enableTorch();
+        // Returning to the app during upload must not relight the torch.
+        if (!_isCapturing) await _enableTorch();
         await prepareCameraForCapture(camera);
         if (!mounted || !_appActive || epoch != _cameraEpoch || _cancelled) {
           return;
@@ -298,6 +299,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     if (camera == null || !camera.value.isInitialized) return;
     _preparingFocus = true;
     try {
+      // A previous capture may have switched the light off. Restore it before
+      // the fresh three-second hold, allowing exposure to settle again.
+      await _enableTorch();
       await prepareCameraForCapture(camera);
     } catch (error) {
       if (mounted && epoch == _holdEpoch && !_cancelled) {
@@ -366,7 +370,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       });
       return;
     }
-    final epoch = _cameraEpoch;
+    var epoch = _cameraEpoch;
     File? temporaryPhoto;
     setState(() => _isCapturing = true);
 
@@ -376,16 +380,34 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       temporaryPhoto = File(photo.path);
       if (!mounted || _cancelled || !_appActive || epoch != _cameraEpoch) {
         if (mounted) setState(() => _isCapturing = false);
+        if (mounted && !_cancelled && _appActive) _initializeCameraAndSensors();
         return;
       }
-      // Pause preview to give user feedback that capture is complete
-      await _cameraController?.pausePreview();
+      // Exposure has finished. Switch the light off before freezing preview or
+      // waiting for network/translation work.
+      try {
+        await camera.setFlashMode(FlashMode.off);
+      } catch (error) {
+        debugPrint('Torch-off command failed; closing camera: $error');
+      }
+      if (!mounted || _cancelled || !_appActive || epoch != _cameraEpoch) {
+        if (mounted) setState(() => _isCapturing = false);
+        if (mounted && !_cancelled && _appActive) _initializeCameraAndSensors();
+        return;
+      }
+      // Some Camera2 devices do not apply flash changes before preview pauses.
+      // Closing the session releases its torch and is safe once JPEG is ready.
+      _releaseCamera();
+      epoch = _cameraEpoch;
+      setState(() {});
+      await _cameraDisposal;
       debugPrint('Photo captured: ${photo.path}');
 
       // Camera output is temporary; retain it only while uploading.
       final savePath = photo.path;
       if (!mounted || _cancelled || !_appActive || epoch != _cameraEpoch) {
         if (mounted) setState(() => _isCapturing = false);
+        if (mounted && !_cancelled && _appActive) _initializeCameraAndSensors();
         return;
       }
       // ── FR 17: Upload Braille scan to backend for AI translation ─────────
@@ -437,7 +459,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
     } catch (e) {
       debugPrint('Capture or upload error: $e');
       try {
-        await _cameraController?.resumePreview();
+        if (mounted && !_cancelled && _appActive) {
+          await _cameraController?.resumePreview();
+          await _enableTorch();
+        }
       } catch (_) {}
 
       if (mounted && !_cancelled) {
@@ -454,6 +479,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
           _errorCooldown = true;
         });
         _cancelHoldWindow();
+        if (_appActive && _cameraController == null) {
+          _initializeCameraAndSensors();
+        }
 
         // Clear the cooldown after 6 s (async, safe if widget is disposed).
         Future.delayed(const Duration(seconds: 6), () {
@@ -614,11 +642,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
                     ),
                     clipBehavior: Clip.antiAlias,
                     child:
-                        _isCameraInitialized
+                        (_isCameraInitialized || _isCapturing)
                             ? Stack(
                               fit: StackFit.expand,
                               children: [
-                                CameraPreview(_cameraController!),
+                                if (_isCameraInitialized &&
+                                    _cameraController != null)
+                                  CameraPreview(_cameraController!)
+                                else
+                                  const ColoredBox(color: Color(0xFF0B0914)),
 
                                 // Remove darkened overlay when aligned so braille is visible
                                 if (!_isAligned)
